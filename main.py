@@ -55,6 +55,28 @@ def require_ai_auth(request: Request) -> JSONResponse | None:
     return None
 
 
+def _get_request_user(request: Request):
+    """Retrieve authenticated user object from session token, or None."""
+    token = request.cookies.get("session_token")
+    if not token:
+        return None
+    try:
+        return database.get_session_user(token)
+    except Exception:
+        return None
+
+
+def _require_admin(request: Request):
+    """Ensure user is logged in and possesses the Admin role."""
+    user = _get_request_user(request)
+    if not user:
+        return None, JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    role = str(user.get("role", "")).strip().lower()
+    if role != "admin":
+        return None, JSONResponse(status_code=403, content={"success": False, "message": "Admin privileges required."})
+    return user, None
+
+
 def _append_xlsx_row(sheet, values):
     """Append a row and force text cells to stay text so values like '=1+1' are not stored as formulas."""
     sheet.append(values)
@@ -364,17 +386,27 @@ async def ink_dependency_page(request: Request):
     """Module 03: Printer to ink dependent and ink to printer dependant."""
     if not is_authenticated(request):
         return RedirectResponse(url="/login", status_code=303)
-    return templates.TemplateResponse(request, "ink_dependency.html")
+    user = _get_request_user(request)
+    return templates.TemplateResponse(request, "ink_dependency.html", {"request": request, "user": user})
 
 
 @app.get("/api/ink-dependency/bootstrap")
-def get_ink_dependency_bootstrap():
-    """Bootstrap: Overview + Printers + Inks + Refill Alerts in one round trip."""
+def get_ink_dependency_bootstrap(request: Request):
+    """Bootstrap: Overview + Printers + Inks + Refill Alerts + User Info in one round trip."""
+    user = _get_request_user(request)
+    user_info = {
+        "id": user.get("id"),
+        "username": user.get("username"),
+        "role": user.get("role"),
+        "is_admin": str(user.get("role", "")).strip().lower() == "admin",
+    } if user else None
+
     return {
         "overview": database.get_ink_dependency_overview(),
         "printers": database.get_printer_models_list(),
         "inks": database.get_ink_products_list(),
         "refill_alerts": database.get_refill_due_alerts(),
+        "current_user": user_info,
     }
 
 
@@ -406,6 +438,117 @@ def get_ink_printer_matrix_endpoint(ink_id: str):
 @app.get("/api/ink-dependency/refill-alerts")
 def get_refill_alerts_endpoint():
     return database.get_refill_due_alerts()
+
+
+@app.get("/api/ink-dependency/relations")
+def list_ink_relations_endpoint(
+    request: Request,
+    printer_id: str = "",
+    ink_id: str = "",
+    status: str = "active",
+):
+    """List confirmed printer <-> ink dependencies."""
+    if not is_authenticated(request):
+        return JSONResponse(status_code=401, content={"success": False, "message": "Unauthorized"})
+    relations = database.list_printer_ink_relations(
+        printer_id=printer_id or None,
+        ink_id=ink_id or None,
+        status=status or None,
+    )
+    return {"success": True, "count": len(relations), "relations": relations}
+
+
+@app.post("/api/ink-dependency/relations")
+async def add_ink_relation_endpoint(request: Request):
+    """Admin-only: Add a verified dependency relation between a printer and an ink/toner."""
+    user, error_resp = _require_admin(request)
+    if error_resp:
+        return error_resp
+
+    try:
+        payload = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={"success": False, "message": "Invalid JSON body."})
+
+    printer_id = str(payload.get("printer_id", "")).strip()
+    ink_id = str(payload.get("ink_id", "")).strip()
+    source = str(payload.get("source", "Admin confirmed")).strip() or "Admin confirmed"
+    notes = str(payload.get("notes", "")).strip()
+
+    try:
+        result = database.add_printer_ink_relation(
+            printer_id=printer_id,
+            ink_id=ink_id,
+            source=source,
+            notes=notes,
+            username=user.get("username", "admin"),
+        )
+        return JSONResponse(
+            status_code=201,
+            content={"success": True, "message": "Relationship added successfully.", "data": result},
+        )
+    except ValueError as e:
+        msg = str(e)
+        status_code = 409 if "duplicate" in msg.lower() else 422
+        return JSONResponse(status_code=status_code, content={"success": False, "message": msg})
+    except Exception as e:
+        logger.exception("Failed to add printer-ink relation")
+        return JSONResponse(status_code=500, content={"success": False, "message": f"Server error: {e}"})
+
+
+@app.put("/api/ink-dependency/relations/{relation_id}")
+async def update_ink_relation_endpoint(relation_id: int, request: Request):
+    """Admin-only: Update dependency relation status, source, or notes."""
+    user, error_resp = _require_admin(request)
+    if error_resp:
+        return error_resp
+
+    try:
+        payload = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={"success": False, "message": "Invalid JSON body."})
+
+    status = payload.get("status")
+    source = payload.get("source")
+    notes = payload.get("notes")
+
+    try:
+        updated = database.update_printer_ink_relation(
+            relation_id=relation_id,
+            status=status,
+            source=source,
+            notes=notes,
+            username=user.get("username", "admin"),
+        )
+        if not updated:
+            return JSONResponse(status_code=404, content={"success": False, "message": "Relationship not found."})
+        return {"success": True, "message": "Relationship updated successfully."}
+    except ValueError as e:
+        return JSONResponse(status_code=422, content={"success": False, "message": str(e)})
+    except Exception as e:
+        logger.exception("Failed to update printer-ink relation")
+        return JSONResponse(status_code=500, content={"success": False, "message": f"Server error: {e}"})
+
+
+@app.delete("/api/ink-dependency/relations/{relation_id}")
+async def deactivate_ink_relation_endpoint(relation_id: int, request: Request, permanent: bool = False):
+    """Admin-only: Deactivate or permanently delete a dependency relation."""
+    user, error_resp = _require_admin(request)
+    if error_resp:
+        return error_resp
+
+    try:
+        if permanent:
+            ok = database.delete_printer_ink_relation(relation_id)
+        else:
+            ok = database.deactivate_printer_ink_relation(relation_id, username=user.get("username", "admin"))
+        if not ok:
+            return JSONResponse(status_code=404, content={"success": False, "message": "Relationship not found."})
+        action_desc = "deleted permanently" if permanent else "deactivated"
+        return {"success": True, "message": f"Relationship {action_desc} successfully."}
+    except Exception as e:
+        logger.exception("Failed to deactivate printer-ink relation")
+        return JSONResponse(status_code=500, content={"success": False, "message": f"Server error: {e}"})
 
 
 @app.get("/api/dashboard/full-overview")

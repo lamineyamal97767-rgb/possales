@@ -132,3 +132,61 @@ quantities and amounts are retained as returns. The current schema does not
 expose a dedicated discount or net-line-amount field in the report query, so
 `QTY * UNIT_PRICE` is treated as the effective amount. Existing customer
 affinity explorer endpoints and permissions remain unchanged.
+
+### Report 03: Printer ↔ Ink Dependency Matrix
+
+লগইন করার পর `/menus/ink` বা `/menus/ink-dependency` পেজে যান। এই পেজে তিনটি স্বতন্ত্র ট্যাব রয়েছে:
+1. **Printer → Ink**: যেকোনো প্রিন্টার নির্বাচন করলে তার অ্যাডমিন নিশ্চিত (Admin Confirmed) কালি/টোনার এবং কেনাকাটার ইতিহাসভিত্তিক সম্ভাব্য সম্পর্ক (Possible Match) আলাদাভাবে প্রদর্শিত হয়।
+2. **Ink → Printer**: যেকোনো কালি বা টোনার নির্বাচন করলে সেটি কোন কোন প্রিন্টারে নিশ্চিতভাবে ব্যবহারযোগ্য তা এবং কোন কোন প্রিন্টারের ক্রেতারা এটি কিনেছেন তা প্রদর্শিত হয়।
+3. **Refill Alerts**: বিদ্যমান রিফিল অ্যালার্ট ব্যবস্থা অপরিবর্তিত রাখা হয়েছে (যেখানে গ্রাহকদের পরবর্তী কালি ক্রয়ের সম্ভাব্য দিন ও জরুরি অবস্থা দেখানো হয়)।
+
+#### 🛡️ নিশ্চিত বনাম সম্ভাব্য সম্পর্কের নীতি (Confirmed vs Possible Match)
+- **Admin confirmed**: সিস্টেম অ্যাডমিনিস্ট্রেটর কর্তৃক ম্যানুফ্যাকচারার স্পেসিফিকেশন বা কারিগরিভাবে যাচাইকৃত নিশ্চিত সম্পর্ক। এটি সবুজ "Verified" ব্যাজসহ প্রদর্শিত হয়।
+- **Possible match (Sales History)**: গ্রাহকদের পূর্ববর্তী ক্রয়ের ইতিহাস (co-purchase) থেকে পাওয়া সম্পর্ক। **গুরুত্বপূর্ণ:** কোনো কাস্টমার একসাথে প্রিন্টার ও কালি কিনলেই তারা পরস্পর কম্প্যাটিবল—এমন দাবি করা হয় না। তাই এটিকে স্পষ্টভাবে সম্ভাব্য সম্পর্ক হিসেবে চিহ্নিত করা হয়েছে এবং সতর্কবার্তা দেওয়া হয়েছে।
+- তথ্য না থাকলে সিস্টেম অনুমান বা কল্পনা করে কোনো সম্পর্ক তৈরি করে না (خালি ফলাফল সঠিকভাবে দেখানো হয়)।
+
+#### 🗄️ ডাটাবেস মাইগ্রেশন ও রোলব্যাক (Migration & Rollback)
+বিদ্যমান কোনো বিজনেস ডেটা (`product`, `sales_details`, `stock_non_serial`) পরিবর্তন না করে একটি স্বতন্ত্র অ্যাপ্লিকেশন টেবিল `printer_ink_compatibility` তৈরি করা হয়েছে।
+
+- **মাইগ্রেশন চালানো (UP):**
+  ```powershell
+  .\venv\Scripts\python.exe -m db.migrations.migrate_printer_ink --up
+  ```
+- **মাইগ্রেশন রোলব্যাক (DOWN):**
+  ```powershell
+  .\venv\Scripts\python.exe -m db.migrations.migrate_printer_ink --down
+  ```
+- **মাইগ্রেশন স্ট্যাটাস পরীক্ষা:**
+  ```powershell
+  .\venv\Scripts\python.exe -m db.migrations.migrate_printer_ink --status
+  ```
+
+**টেবিল স্ট্রাকচার:**
+- `id`: Primary key
+- `printer_id`: প্রোডাক্ট আইডি (ভ্যালিডেশনযুক্ত)
+- `ink_id`: কালি/টোনারের প্রোডাক্ট আইডি (ভ্যালিডেশনযুক্ত)
+- `status`: `'active'` অথবা `'inactive'`
+- `source`: নিশ্চিতকরণের উৎস (ডিফল্ট: `'Admin confirmed'`)
+- `notes`: অ্যাডমিনের অতিরিক্ত নোট বা স্পেসিফিকেশন
+- `created_by`, `updated_by`, `created_at`, `updated_at`: পরিবর্তন ট্র্যাকিং
+- `UNIQUE KEY uq_printer_ink (printer_id, ink_id)`: ডুপ্লিকেট সম্পর্ক সম্পূর্ণভাবে প্রতিরোধ করে।
+
+#### 🔑 অ্যাডমিন ম্যানেজমেন্ট ও পারমিশন
+- শুধুমাত্র **Admin** রোলধারী ইউজার নিশ্চিত সম্পর্ক যোগ, সংশোধন ও নিষ্ক্রিয় করতে পারেন।
+- সাধারণ ইউজার বা অননুমোদিত রিকোয়েস্টের ক্ষেত্রে যথাক্রমে `403 Forbidden` এবং `401 Unauthorized` ফেরত দেওয়া হয়।
+- UI-তে অ্যাডমিনের জন্য সহজ ফর্ম এবং পসিবল ম্যাচ টেবিল থেকে সরাসরি এক ক্লিকে "Confirm" করার সুবিধা রয়েছে।
+- ভুল বা অস্তিত্বহীন প্রিন্টার/কালি আইডি দিলে সিস্টেম ত্রুটি বার্তা (`422 Unprocessable Entity`) প্রদর্শন করে।
+
+#### 🧪 টেস্ট চালানো (Test Suite)
+Report 03-এর সকল ফিচার পরীক্ষার জন্য সম্পূর্ণ টেস্ট স্যুট তৈরি করা হয়েছে:
+```powershell
+.\venv\Scripts\python.exe -m unittest test_ink_dependency.py
+```
+বিদ্যমান ফিচারের রিগ্রেশন টেস্ট:
+```powershell
+.\venv\Scripts\python.exe -m unittest test_upgrade_features.py test_affinity_json.py test_ai_endpoints.py
+```
+
+#### 🌐 ডাটাবেস সীমাবদ্ধতা ও বাস্তব অবস্থা
+- লোকাল MySQL ডাটাবেস (`print_db`) সফলভাবে কানেক্টেড এবং লাইভ রয়েছে।
+- ডাটাবেস বন্ধ বা সংযোগ বিচ্ছিন্ন থাকলে UI-তে স্বয়ংক্রিয়ভাবে স্পষ্ট এরর ব্যানার ও "Retry" বাটন প্রদর্শিত হবে।
