@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sales Reports - Printer Analytics</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen">
+<main class="max-w-6xl mx-auto p-4 sm:p-8">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div><a href="/menus/dashboard" class="text-sm text-blue-600">← Dashboard</a><h1 class="text-2xl font-bold mt-2">Sales Reports</h1><p class="text-sm text-slate-500">Filters are applied to the comparison and both exports.</p></div>
+        <div class="flex gap-2"><button id="xlsx" class="rounded-lg bg-emerald-600 text-white px-3 py-2 text-sm">Excel</button><button id="pdf" class="rounded-lg bg-rose-600 text-white px-3 py-2 text-sm">PDF</button></div>
+    </div>
+    <section class="bg-white rounded-xl p-4 shadow-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <label class="text-xs font-semibold">From<input id="start" type="date" class="mt-1 w-full border rounded-lg p-2"></label>
+        <label class="text-xs font-semibold">To<input id="end" type="date" class="mt-1 w-full border rounded-lg p-2"></label>
+        <label class="text-xs font-semibold">Product<input id="product" class="mt-1 w-full border rounded-lg p-2" placeholder="Product ID"></label>
+        <label class="text-xs font-semibold">Category<input id="category" class="mt-1 w-full border rounded-lg p-2" placeholder="Category ID"></label>
+        <label class="text-xs font-semibold">Customer<input id="customer" class="mt-1 w-full border rounded-lg p-2" placeholder="Customer ID"></label>
+        <button id="run" class="sm:col-span-2 lg:col-span-5 rounded-lg bg-slate-900 text-white px-4 py-2">Run report</button>
+    </section>
+    <section id="summary" class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4"></section>
+    <section class="bg-white rounded-xl shadow-sm overflow-x-auto mt-4"><table class="w-full text-sm"><thead class="bg-slate-50"><tr><th class="p-3 text-left">Date</th><th class="p-3 text-left">Product</th><th class="p-3 text-left">Customer</th><th class="p-3 text-right">Qty</th><th class="p-3 text-right">Revenue</th></tr></thead><tbody id="rows"></tbody></table></section>
+</main>
+<script>
+let appliedQuery = null;
+let reportRequestSeq = 0;
+const q = id => document.getElementById(id);
+function params() { const p = new URLSearchParams(); [['start_date','start'],['end_date','end'],['product_id','product'],['category_id','category'],['customer_id','customer']].forEach(([a,b]) => { if(q(b).value) p.set(a,q(b).value); }); return p; }
+function renderSummary(s) {
+    const container = q('summary');
+    container.replaceChildren();
+    [['Revenue', s.revenue], ['Previous', s.previous_revenue], ['Change', s.change_percent == null ? '—' : s.change_percent + '%'], ['Lines', s.invoice_lines]].forEach(([label, value]) => {
+        const card = document.createElement('div');
+        card.className = 'bg-white rounded-xl p-4 shadow-sm';
+        const labelEl = document.createElement('div');
+        labelEl.className = 'text-xs text-slate-500';
+        labelEl.textContent = label;
+        const valueEl = document.createElement('div');
+        valueEl.className = 'text-lg font-bold mt-1';
+        valueEl.textContent = value;
+        card.append(labelEl, valueEl);
+        container.append(card);
+    });
+}
+function renderRows(rows) {
+    const tbody = q('rows');
+    tbody.replaceChildren();
+    rows.forEach(r => {
+        const tr = document.createElement('tr');
+        tr.className = 'border-t';
+        [r.sales_date || '', r.product_name || '', r.customer_name || '', r.quantity, r.revenue].forEach((value, index) => {
+            const td = document.createElement('td');
+            td.className = index >= 3 ? 'p-3 text-right' : 'p-3';
+            td.textContent = value ?? '';
+            tr.append(td);
+        });
+        tbody.append(tr);
+    });
+}
+async function run() {
+    const requestId = ++reportRequestSeq;
+    const query = params().toString();
+    try {
+        const res = await fetch('/api/reports/sales?' + query);
+        const data = await res.json();
+        if (requestId !== reportRequestSeq) return;
+        if (!res.ok) return alert(data.message || 'Report failed');
+        renderSummary(data.summary);
+        renderRows(data.rows || []);
+        appliedQuery = query;
+    } catch (err) {
+        if (requestId !== reportRequestSeq) return;
+        alert(err.message || 'Report failed');
+    }
+}
+q('run').onclick=run; ['xlsx','pdf'].forEach(ext=>q(ext).onclick=()=>{ if (appliedQuery === null) return alert('Run a report before exporting.'); location.href='/api/reports/sales.'+ext+'?'+appliedQuery; }); run();
+</script>
+</body></html>
