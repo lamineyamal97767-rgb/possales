@@ -1,37 +1,26 @@
-"""
-Product Research Service for New Products Intelligence.
-Handles:
-1. Permission checks (can_view_new_products)
-2. Product reporting (local, market, comparison)
-3. Background product research job execution
-4. Research job status retrieval
+"""Product Research Service for New Products Intelligence.
+
+Local product reporting stays in this module. Market discovery is delegated to
+``market_research_service`` so every visible market claim is backed by a stored
+source observation instead of a hard-coded sample.
 """
 
 from __future__ import annotations
 
 import logging
-import os
-import threading
-import time
-import uuid
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Mapping, Optional
 
 from db.connection import get_connection
 from config import load_dotenv
+import market_research_service
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-# In-memory registry for background research jobs
-_RESEARCH_JOBS: Dict[str, Dict[str, Any]] = {}
-_JOBS_LOCK = threading.Lock()
-
-
-class FeatureNotReadyError(Exception):
-    """Raised when an external dependency or service subsystem is not yet configured."""
-    pass
+DuplicateResearchJobError = market_research_service.DuplicateResearchJobError
+ProviderState = market_research_service.get_provider_health
 
 
 def _resolve_new_products_menu_id() -> Optional[int]:
@@ -68,12 +57,10 @@ def can_view_new_products(user: Mapping[str, Any] | None) -> bool:
         return True
 
     if isinstance(allowed, list):
-        # Check string slug
         lower_slugs = {str(x).strip().lower() for x in allowed if isinstance(x, str)}
         if any(slug in lower_slugs for slug in ("new-products", "new_products", "new products")):
             return True
 
-        # Check numeric ID
         menu_id = _resolve_new_products_menu_id()
         if menu_id is not None:
             try:
@@ -103,6 +90,25 @@ def _get_latest_sales_date() -> date:
     return date.today()
 
 
+def _market_note(snapshot: Mapping[str, Any]) -> str:
+    provider = snapshot.get("provider") or {}
+    if provider.get("message"):
+        return str(provider["message"])
+    if not snapshot.get("available"):
+        return "No market research has been stored yet. Only an Admin can start research."
+    run = snapshot.get("run") or {}
+    status = str(run.get("status") or "unknown").lower()
+    if status == "completed":
+        return "Showing the latest completed evidence-backed market research run."
+    if status == "partial":
+        return "Showing partial results from the latest run. Some sources or provider calls failed."
+    if status == "failed":
+        return "The latest market research run failed. No failed search is shown as completed."
+    if status == "interrupted":
+        return "The latest market research run was interrupted before completion."
+    return "Showing persisted market research results."
+
+
 def get_product_report(filters: Mapping[str, Any]) -> Dict[str, Any]:
     """
     Generate product report based on view type: 'local', 'market', or 'comparison'.
@@ -112,7 +118,6 @@ def get_product_report(filters: Mapping[str, Any]) -> Dict[str, Any]:
     if view not in ("local", "market", "comparison"):
         raise ValueError(f"Invalid view '{view}'. Must be 'local', 'market', or 'comparison'.")
 
-    # Resolve date boundaries
     end_date_raw = filters.get("end_date")
     start_date_raw = filters.get("start_date")
 
@@ -131,8 +136,9 @@ def get_product_report(filters: Mapping[str, Any]) -> Dict[str, Any]:
 
     category_id = filters.get("category_id")
     q = filters.get("q")
+    brand = filters.get("brand")
+    market_category = filters.get("market_category")
 
-    # Local database products query
     with get_connection() as conn:
         with conn.cursor() as cur:
             conditions = ["sd.SALES_DATE BETWEEN %s AND %s"]
@@ -182,30 +188,13 @@ def get_product_report(filters: Mapping[str, Any]) -> Dict[str, Any]:
         r["period_revenue"] = float(r.get("period_revenue") or 0.0)
         r["sales_price"] = float(r.get("sales_price") or 0.0)
 
-    market_insights = []
-    if view in ("market", "comparison"):
-        # External market insights placeholder / Tavily provider state
-        tavily_key = os.getenv("TAVILY_API_KEY", "").strip()
-        market_insights = [
-            {
-                "trend_keyword": "EcoTank Ink Tank High Yield",
-                "market_demand": "High",
-                "competitor_price_range": "৳1,200 - ৳1,800",
-                "recommended_action": "Consider introducing compatible 003 / 664 bulk bottles.",
-            },
-            {
-                "trend_keyword": "Wireless Auto-Duplex Laser Printers",
-                "market_demand": "Growing",
-                "competitor_price_range": "৳18,500 - ৳26,000",
-                "recommended_action": "Demand spike in SME / Corporate accounting sector.",
-            },
-        ]
-        if not tavily_key:
-            market_note = "Market insights operating in offline baseline mode. Configure TAVILY_API_KEY for live web discovery."
-        else:
-            market_note = "Live market search integration ready."
-    else:
-        market_note = "Local inventory and sales performance view."
+    market_research = market_research_service.get_market_snapshot(
+        {
+            "q": q,
+            "brand": brand,
+            "market_category": market_category,
+        }
+    )
 
     return {
         "view": view,
@@ -217,116 +206,57 @@ def get_product_report(filters: Mapping[str, Any]) -> Dict[str, Any]:
         "filters": {
             "category_id": category_id,
             "q": q,
+            "brand": brand,
+            "market_category": market_category,
         },
         "total_products": len(rows),
         "products": rows,
-        "market_insights": market_insights,
-        "note": market_note,
+        "market_insights": [],
+        "market_research": market_research,
+        "note": _market_note(market_research) if view in ("market", "comparison")
+        else "Local inventory and sales performance view. Market evidence is stored separately.",
     }
 
 
+def get_categories() -> List[Dict[str, str]]:
+    """Return local catalog category IDs and names for the filter control."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT DISTINCT p.CATEGORY_ID AS category_id,
+                       COALESCE(c.CATEGORY_NAME, 'Uncategorized') AS category_name
+                FROM product p
+                LEFT JOIN category c ON c.CATEGORY_ID = p.CATEGORY_ID
+                WHERE p.CATEGORY_ID IS NOT NULL AND p.CATEGORY_ID <> ''
+                ORDER BY category_name ASC, category_id ASC
+            """)
+            rows = cur.fetchall()
+    return [
+        {
+            "category_id": str(row.get("category_id") or ""),
+            "category_name": str(row.get("category_name") or "Uncategorized"),
+        }
+        for row in rows
+        if row.get("category_id")
+    ]
+
+
 def tavily_search(query: str, max_results: int = 5) -> Dict[str, Any]:
-    """Execute live web search via Tavily API without external SDK dependencies."""
-    api_key = os.getenv("TAVILY_API_KEY", "").strip()
-    if not api_key:
-        return {"results": [], "answer": "TAVILY_API_KEY not configured"}
-    import json
-    import urllib.request
-    try:
-        req = urllib.request.Request(
-            "https://api.tavily.com/search",
-            data=json.dumps({
-                "api_key": api_key,
-                "query": query,
-                "max_results": max_results,
-                "search_depth": "basic",
-            }).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except Exception as e:
-        logger.warning(f"Tavily search API call failed: {e}")
-        return {"results": [], "error": str(e)}
-
-
-def _run_research_worker(job_id: str, user_id: Any):
-    """Asynchronous background research worker with optional live Tavily search."""
-    try:
-        with _JOBS_LOCK:
-            if job_id in _RESEARCH_JOBS:
-                _RESEARCH_JOBS[job_id]["status"] = "in_progress"
-                _RESEARCH_JOBS[job_id]["progress"] = 20
-                _RESEARCH_JOBS[job_id]["updated_at"] = datetime.now().isoformat()
-
-        # Step 1: Scanning local catalog
-        time.sleep(0.3)
-        with _JOBS_LOCK:
-            if job_id in _RESEARCH_JOBS:
-                _RESEARCH_JOBS[job_id]["progress"] = 50
-                _RESEARCH_JOBS[job_id]["stage"] = "scanning_market"
-
-        # Step 2: Live or baseline web search
-        tavily_results = tavily_search("printer models toners new market Bangladesh", max_results=3)
-        time.sleep(0.3)
-
-        with _JOBS_LOCK:
-            if job_id in _RESEARCH_JOBS:
-                _RESEARCH_JOBS[job_id]["status"] = "completed"
-                _RESEARCH_JOBS[job_id]["progress"] = 100
-                _RESEARCH_JOBS[job_id]["stage"] = "finished"
-                _RESEARCH_JOBS[job_id]["completed_at"] = datetime.now().isoformat()
-                _RESEARCH_JOBS[job_id]["result_summary"] = {
-                    "new_products_found": 5,
-                    "market_trends_analyzed": 12,
-                    "live_web_results": len(tavily_results.get("results", [])),
-                    "recommended_additions": ["Epson 003 Black", "Canon GI-790 Cyan", "HP Neverstop 103A"],
-                }
-    except Exception as exc:
-        logger.exception(f"Background research job {job_id} encountered an error: {exc}")
-        with _JOBS_LOCK:
-            if job_id in _RESEARCH_JOBS:
-                _RESEARCH_JOBS[job_id]["status"] = "failed"
-                _RESEARCH_JOBS[job_id]["error"] = "Research worker encountered an error."
-                _RESEARCH_JOBS[job_id]["updated_at"] = datetime.now().isoformat()
+    """Backward-compatible wrapper around the evidence-based provider client."""
+    return market_research_service.tavily_search(query, max_results=max_results)
 
 
 def start_product_research(user_id: Any) -> str:
-    """
-    Queue an asynchronous product research job for an Admin user.
-    Returns immediately with a unique job_id.
-    """
-    job_id = f"job-{uuid.uuid4().hex[:10]}"
-    now_iso = datetime.now().isoformat()
-
-    with _JOBS_LOCK:
-        _RESEARCH_JOBS[job_id] = {
-            "job_id": job_id,
-            "user_id": user_id,
-            "status": "pending",
-            "progress": 0,
-            "stage": "queued",
-            "created_at": now_iso,
-            "updated_at": now_iso,
-        }
-
-    # Execute in daemon background thread to not block HTTP request
-    worker_thread = threading.Thread(
-        target=_run_research_worker,
-        args=(job_id, user_id),
-        daemon=True,
-        name=f"research-worker-{job_id}",
-    )
-    worker_thread.start()
-
-    return job_id
+    """Queue an Admin research run. Raises DuplicateResearchJobError when busy."""
+    market_research_service.initialize()
+    return market_research_service.start_product_research_job(user_id)
 
 
 def get_product_research_status(job_id: str) -> Optional[Dict[str, Any]]:
-    """Retrieve progress and metadata of a research job, or None if not found."""
-    with _JOBS_LOCK:
-        job = _RESEARCH_JOBS.get(job_id)
-        if not job:
-            return None
-        return dict(job)
+    """Retrieve persisted progress and results for a research job."""
+    return market_research_service.get_research_status(job_id)
+
+
+def initialize_market_research() -> None:
+    """Create application-owned tables and interrupt pre-restart jobs."""
+    market_research_service.initialize()

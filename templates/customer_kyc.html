@@ -1,0 +1,1116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer KYC & Business Profile — Printer Analytics</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .sidebar-scroll::-webkit-scrollbar { width: 4px; }
+        .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+        .sidebar-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+        .sidebar-nav-item { transition: all 0.15s ease; }
+        .sidebar-nav-item:hover { background: rgba(255,255,255,0.08); }
+        .sidebar-nav-item.active { background: rgba(59, 130, 246, 0.25); border-right: 3px solid #3b82f6; }
+        @media (max-width: 1023px) {
+            .sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 40; display: none; }
+            .sidebar-overlay.active { display: block; }
+        }
+        .modal-scroll::-webkit-scrollbar { width: 6px; }
+        .modal-scroll::-webkit-scrollbar-track { background: #f1f5f9; }
+        .modal-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex">
+
+    <!-- Mobile Sidebar Overlay -->
+    <div id="sidebar-overlay" class="sidebar-overlay lg:hidden" onclick="toggleSidebar()"></div>
+
+    <!-- ===== SIDEBAR ===== -->
+    <aside id="sidebar" class="fixed top-0 left-0 z-50 h-screen w-64 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-white flex flex-col transition-all duration-300 ease-in-out -translate-x-full lg:translate-x-0 shadow-2xl">
+        <!-- Brand Header -->
+        <div class="h-16 flex items-center gap-3 px-5 border-b border-white/10 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20 text-white font-bold">
+                <i data-lucide="printer" class="w-5 h-5"></i>
+            </div>
+            <div>
+                <h1 class="text-sm font-bold tracking-tight text-white leading-none">Printer Analytics</h1>
+                <p class="text-[10px] text-slate-400 font-medium mt-0.5">Fleet Ops & Intelligence</p>
+            </div>
+        </div>
+
+        <!-- Navigation Links -->
+        <nav class="flex-1 overflow-y-auto sidebar-scroll px-3 py-4 space-y-1" id="sidebar-nav-container">
+            <div class="px-3 py-4 text-xs text-slate-400 flex items-center gap-2">
+                <div class="w-4 h-4 border-2 border-slate-500 border-t-blue-500 rounded-full animate-spin"></div>
+                <span>Loading menus...</span>
+            </div>
+        </nav>
+
+        <!-- Sidebar Footer -->
+        <div class="p-3 border-t border-white/10 shrink-0 bg-slate-950/40">
+            <div class="flex items-center justify-between px-2 py-1.5 text-xs text-slate-400">
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span class="font-medium text-slate-300">Database Live</span>
+                </div>
+                <span class="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-white/10 text-slate-300">
+                    {{ user.role if user and user.role else 'User' }}
+                </span>
+            </div>
+            <a href="/logout" class="mt-2 w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/10 transition">
+                <i data-lucide="log-out" class="w-4 h-4"></i>
+                <span>Sign Out</span>
+            </a>
+        </div>
+    </aside>
+
+    <!-- ===== MAIN CONTENT AREA ===== -->
+    <div id="main-content" class="transition-all duration-300 ease-in-out lg:ml-64 flex-1 flex flex-col min-h-screen">
+
+        <!-- Top Header Bar -->
+        <header class="sticky top-0 z-30 h-16 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-4 sm:px-6 flex items-center justify-between shadow-xs">
+            <div class="flex items-center gap-3">
+                <button type="button" onclick="toggleSidebar()" class="p-2 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 transition flex items-center justify-center" aria-label="Toggle navigation menu">
+                    <i data-lucide="menu" class="w-5 h-5"></i>
+                </button>
+                <div class="flex items-center gap-2 text-xs font-medium text-slate-500">
+                    <a href="/menus/dashboard" class="hover:text-blue-600 transition">Dashboard</a>
+                    <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+                    <span>Client Operations</span>
+                    <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+                    <span class="text-slate-900 font-semibold">Customer KYC</span>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2 sm:gap-3">
+                {% if user and user.role and user.role.lower() == 'admin' %}
+                <span class="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                    <i data-lucide="shield-check" class="w-3.5 h-3.5"></i> Admin Editor Enabled
+                </span>
+                {% endif %}
+                <button type="button" onclick="fetchDirectory()" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg shadow-xs transition" title="Refresh Directory">
+                    <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-slate-500" id="refresh-icon"></i>
+                    <span class="hidden sm:inline">Refresh</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Body -->
+        <main class="flex-1 p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl w-full mx-auto">
+
+            <!-- Title & Context -->
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                    <h2 class="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5">
+                        <span class="p-2 bg-blue-50 text-blue-600 rounded-xl border border-blue-100">
+                            <i data-lucide="building-2" class="w-6 h-6"></i>
+                        </span>
+                        Customer Business KYC
+                    </h2>
+                    <p class="text-xs sm:text-sm text-slate-500 mt-1">
+                        Comprehensive business intelligence directory: business classification, contact profiles, and printer/ink purchase summaries.
+                    </p>
+                </div>
+                <div class="text-right text-xs text-slate-400">
+                    <div id="report-timestamp">Directory: Loading...</div>
+                    <div class="text-[11px] text-slate-500 mt-0.5">Admin-managed business intelligence</div>
+                </div>
+            </div>
+
+            <!-- KPI SUMMARY CARDS -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <!-- Card 1: Total Directory -->
+                <div class="rounded-2xl bg-white border border-slate-200/80 p-5 shadow-xs relative overflow-hidden group hover:shadow-md transition">
+                    <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600"></div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Total Customers</span>
+                        <div class="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                            <i data-lucide="users" class="w-5 h-5"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3 flex items-baseline gap-2">
+                        <span class="text-2xl sm:text-3xl font-extrabold text-slate-900" id="kpi-total-cust">-</span>
+                        <span class="text-xs font-semibold text-slate-500">Registered</span>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-1">Includes both active and zero-purchase clients</p>
+                </div>
+
+                <!-- Card 2: Profiled KYC -->
+                <div class="rounded-2xl bg-white border border-emerald-100 p-5 shadow-xs relative overflow-hidden group hover:shadow-md transition">
+                    <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-600"></div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold uppercase tracking-wider text-emerald-700">Business Profile Added</span>
+                        <div class="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                            <i data-lucide="check-circle" class="w-5 h-5"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3 flex items-baseline gap-2">
+                        <span class="text-2xl sm:text-3xl font-extrabold text-slate-900" id="kpi-profiled-cust">-</span>
+                        <span class="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200" id="kpi-profiled-pct">
+                            -%
+                        </span>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-1">Enriched with verified business details</p>
+                </div>
+
+                <!-- Card 3: Unprofiled -->
+                <div class="rounded-2xl bg-white border border-amber-100 p-5 shadow-xs relative overflow-hidden group hover:shadow-md transition">
+                    <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-400 to-amber-500"></div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold uppercase tracking-wider text-amber-700">Missing Business Profile</span>
+                        <div class="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                            <i data-lucide="help-circle" class="w-5 h-5"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3 flex items-baseline gap-2">
+                        <span class="text-2xl sm:text-3xl font-extrabold text-slate-900" id="kpi-unprofiled-cust">-</span>
+                        <span class="text-xs font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                            Pending Info
+                        </span>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-1">Awaiting business type and profile notes</p>
+                </div>
+
+                <!-- Card 4: Customers with Sales History -->
+                <div class="rounded-2xl bg-white border border-indigo-100 p-5 shadow-xs relative overflow-hidden group hover:shadow-md transition">
+                    <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 to-purple-600"></div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold uppercase tracking-wider text-indigo-700">With Sales History</span>
+                        <div class="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                            <i data-lucide="shopping-bag" class="w-5 h-5"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3 flex items-baseline gap-2">
+                        <span class="text-2xl sm:text-3xl font-extrabold text-slate-900" id="kpi-with-sales">-</span>
+                        <span class="text-xs font-semibold text-slate-500">
+                            (<span id="kpi-zero-sales">-</span> zero sales)
+                        </span>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-1">Clients with recorded printer / ink orders</p>
+                </div>
+            </div>
+
+            <!-- SEARCH & FILTER BAR -->
+            <div class="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs space-y-3">
+                <div class="grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
+                    <!-- Search Input -->
+                    <div class="sm:col-span-7 relative">
+                        <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                        <input type="text" id="search-input" onkeyup="handleSearchKeyup(event)" placeholder="Search by customer name, business name, phone, or ID..." class="w-full pl-10 pr-4 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition">
+                    </div>
+
+                    <!-- Business Type Filter Dropdown -->
+                    <div class="sm:col-span-4">
+                        <select id="business-type-select" onchange="handleFilterChange()" class="w-full py-2.5 px-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium">
+                            <option value="all">Filter: All Business Types</option>
+                            <option value="none">No Business Profile Added</option>
+                            <!-- Dynamically loaded types -->
+                        </select>
+                    </div>
+
+                    <!-- Clear Action -->
+                    <div class="sm:col-span-1 flex justify-end">
+                        <button type="button" onclick="clearFilters()" class="w-full sm:w-auto p-2.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition flex items-center justify-center" title="Reset Filters" aria-label="Reset Filters">
+                            <i data-lucide="x" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CUSTOMERS DIRECTORY TABLE -->
+            <div class="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead>
+                            <tr class="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                                <th class="py-3.5 px-4">Customer Name & ID</th>
+                                <th class="py-3.5 px-4">Contact & Phone</th>
+                                <th class="py-3.5 px-4">Business Profile</th>
+                                <th class="py-3.5 px-4 text-center">Orders & Spend</th>
+                                <th class="py-3.5 px-4 text-center">Last Purchase</th>
+                                <th class="py-3.5 px-4 text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="kyc-table-body" class="divide-y divide-slate-100">
+                            <!-- Injected rows -->
+                            <tr>
+                                <td colspan="6" class="py-12 text-center text-slate-400">
+                                    <div class="flex flex-col items-center justify-center gap-2">
+                                        <div class="w-6 h-6 border-2 border-slate-400 border-t-blue-600 rounded-full animate-spin"></div>
+                                        <span>Loading customer KYC directory...</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Empty State -->
+                <div id="empty-state" class="hidden py-16 px-4 text-center">
+                    <div class="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+                        <i data-lucide="inbox" class="w-6 h-6"></i>
+                    </div>
+                    <h3 class="text-sm font-bold text-slate-800">No Customers Found</h3>
+                    <p class="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                        No customer records matched your search keyword or selected business type filter.
+                    </p>
+                </div>
+
+                <!-- Error State -->
+                <div id="error-state" class="hidden py-12 px-4 text-center bg-rose-50/50">
+                    <div class="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-3">
+                        <i data-lucide="alert-circle" class="w-6 h-6"></i>
+                    </div>
+                    <h3 class="text-sm font-bold text-rose-900">Failed to Load Customer Directory</h3>
+                    <p class="text-xs text-rose-700 mt-1 max-w-sm mx-auto" id="error-message-text">
+                        A server error occurred while retrieving customer KYC records.
+                    </p>
+                    <button type="button" onclick="fetchDirectory()" class="mt-3 px-4 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition">
+                        Retry
+                    </button>
+                </div>
+
+                <!-- Pagination Footer -->
+                <div class="p-4 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+                    <div class="flex items-center gap-2">
+                        <span>Showing</span>
+                        <span id="page-start" class="font-bold text-slate-700">0</span>
+                        <span>to</span>
+                        <span id="page-end" class="font-bold text-slate-700">0</span>
+                        <span>of</span>
+                        <span id="page-total" class="font-bold text-slate-900">0</span>
+                        <span>customers</span>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <select id="page-size-select" onchange="handlePageSizeChange()" class="py-1 px-2.5 text-xs bg-white border border-slate-200 rounded-lg font-medium text-slate-700 focus:outline-hidden" aria-label="Page size selector">
+                            <option value="15">15 per page</option>
+                            <option value="25" selected>25 per page</option>
+                            <option value="50">50 per page</option>
+                            <option value="100">100 per page</option>
+                        </select>
+
+                        <div class="flex items-center gap-1">
+                            <button type="button" id="prev-page-btn" onclick="changePage(-1)" class="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed transition" disabled aria-label="Previous Page">
+                                <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                            </button>
+                            <span id="current-page-num" class="px-3 py-1 font-bold text-slate-800 bg-white border border-slate-200 rounded-lg">1</span>
+                            <button type="button" id="next-page-btn" onclick="changePage(1)" class="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed transition" disabled aria-label="Next Page">
+                                <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- ===== CUSTOMER KYC PROFILE & EDIT MODAL ===== -->
+    <div id="profile-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs hidden transition-opacity">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+            <!-- Modal Header -->
+            <div class="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50/80">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                        <i data-lucide="building-2" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-sm sm:text-base font-bold text-slate-900" id="modal-customer-name">Customer Profile</h3>
+                        <div class="flex items-center gap-2 mt-0.5">
+                            <span class="text-xs text-slate-500 font-mono" id="modal-customer-id">CS00000000</span>
+                            <span id="modal-profile-status-badge"></span>
+                        </div>
+                    </div>
+                </div>
+                <button type="button" onclick="closeProfileModal()" class="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded-xl transition" aria-label="Close Profile">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Modal Content (Scrollable) -->
+            <div class="p-5 overflow-y-auto modal-scroll space-y-6 flex-1 text-xs">
+
+                <!-- Alert Message Banner inside modal -->
+                <div id="modal-alert" class="hidden p-3 rounded-xl text-xs font-semibold"></div>
+
+                <!-- 1. BASE CONTACT INFORMATION (From Existing Database) -->
+                <div>
+                    <h4 class="font-bold text-slate-900 text-xs uppercase tracking-wider mb-2.5 flex items-center gap-1.5 text-slate-500">
+                        <i data-lucide="contact" class="w-4 h-4 text-slate-400"></i>
+                        Contact & Baseline Details
+                    </h4>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 rounded-xl p-3.5 border border-slate-200/60">
+                        <div>
+                            <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Phone & Mobile</span>
+                            <div class="mt-0.5 font-semibold text-slate-800" id="modal-phone-display">-</div>
+                        </div>
+                        <div>
+                            <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Email Address</span>
+                            <div class="mt-0.5 font-medium text-slate-700 truncate" id="modal-email-display">-</div>
+                        </div>
+                        <div>
+                            <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Office Address</span>
+                            <div class="mt-0.5 font-medium text-slate-700 truncate" id="modal-address-display">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. BUSINESS PROFILE & ADMIN EDIT FORM -->
+                <div class="border border-blue-100 rounded-2xl bg-gradient-to-br from-blue-50/40 via-white to-slate-50/50 p-4 space-y-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h4 class="font-bold text-blue-900 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                                <i data-lucide="briefcase" class="w-4 h-4 text-blue-600"></i>
+                                Business KYC Details
+                            </h4>
+                            <p class="text-[11px] text-slate-500 mt-0.5">
+                                Application-owned metadata regarding the customer's business operations.
+                            </p>
+                        </div>
+                        <div id="modal-audit-info" class="text-[10px] text-slate-400 text-right">
+                            <!-- Updated by info -->
+                        </div>
+                    </div>
+
+                    <!-- View Mode (Non-Admins or Preview) -->
+                    <div id="kyc-view-mode" class="space-y-3">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div class="bg-white p-3 rounded-xl border border-slate-200/80">
+                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Business Name</span>
+                                <div class="text-xs font-bold text-slate-900 mt-1" id="view-business-name">No business profile added</div>
+                            </div>
+                            <div class="bg-white p-3 rounded-xl border border-slate-200/80">
+                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Business Type / Sector</span>
+                                <div class="text-xs font-semibold text-slate-800 mt-1" id="view-business-type">Not specified</div>
+                            </div>
+                        </div>
+                        <div class="bg-white p-3 rounded-xl border border-slate-200/80">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Contact Person</span>
+                            <div class="text-xs font-semibold text-slate-800 mt-1" id="view-contact-person">Not specified</div>
+                        </div>
+                        <div class="bg-white p-3 rounded-xl border border-slate-200/80">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Business Operational Notes</span>
+                            <div class="text-xs text-slate-700 mt-1 whitespace-pre-line" id="view-business-notes">No business notes recorded.</div>
+                        </div>
+                        {% if user and user.role and user.role.lower() == 'admin' %}
+                        <div class="flex justify-end pt-1">
+                            <button type="button" onclick="enableEditMode()" class="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-xs">
+                                <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
+                                <span>Edit Business Profile</span>
+                            </button>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Edit Form (Admins Only) -->
+                    {% if user and user.role and user.role.lower() == 'admin' %}
+                    <form id="kyc-edit-form" onsubmit="handleProfileSubmit(event)" class="hidden space-y-3">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label for="edit-business-name" class="block text-[11px] font-bold text-slate-700 mb-1">Business Name</label>
+                                <input type="text" id="edit-business-name" maxlength="200" placeholder="e.g. Acme Printing Press & Graphics" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-hidden">
+                            </div>
+                            <div>
+                                <label for="edit-business-type" class="block text-[11px] font-bold text-slate-700 mb-1">Business Type / Industry</label>
+                                <input type="text" id="edit-business-type" list="business-type-datalist" maxlength="100" placeholder="Select or type custom sector..." class="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-hidden">
+                                <datalist id="business-type-datalist">
+                                    <option value="Corporate & Commercial Office">
+                                    <option value="Printing Press & Publication">
+                                    <option value="Retail Stationery & Bookshop">
+                                    <option value="Government Organization / NGO">
+                                    <option value="Educational Institution">
+                                    <option value="IT & Tech Service Center">
+                                    <option value="Wholesale Distributor / Dealer">
+                                    <option value="Healthcare & Diagnostics">
+                                    <option value="Other Commercial Business">
+                                </datalist>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label for="edit-contact-person" class="block text-[11px] font-bold text-slate-700 mb-1">Key Business Contact Person</label>
+                            <input type="text" id="edit-contact-person" maxlength="100" placeholder="e.g. John Doe (Procurement Manager)" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-hidden">
+                        </div>
+
+                        <div>
+                            <label for="edit-notes" class="block text-[11px] font-bold text-slate-700 mb-1">Business Description & Operational Notes</label>
+                            <textarea id="edit-notes" rows="3" placeholder="Describe business model, printing volume requirements, primary brands used..." class="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-hidden"></textarea>
+                        </div>
+
+                        <div class="flex items-center justify-end gap-2 pt-2">
+                            <button type="button" onclick="cancelEditMode()" class="px-3.5 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-semibold text-xs transition">
+                                Cancel
+                            </button>
+                            <button type="submit" id="save-profile-btn" class="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-xs">
+                                <i data-lucide="save" class="w-3.5 h-3.5"></i>
+                                <span>Save Changes</span>
+                            </button>
+                        </div>
+                    </form>
+                    {% endif %}
+                </div>
+
+                <!-- 3. PURCHASE SUMMARY & PRODUCTS -->
+                <div>
+                    <h4 class="font-bold text-slate-900 text-xs uppercase tracking-wider mb-2.5 flex items-center justify-between text-slate-500">
+                        <span class="flex items-center gap-1.5">
+                            <i data-lucide="shopping-cart" class="w-4 h-4 text-slate-400"></i>
+                            Purchase Intelligence & Equipment
+                        </span>
+                        <span class="text-[10px] text-slate-400 font-normal">Derived from invoice history</span>
+                    </h4>
+
+                    <!-- Purchase KPIs -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center mb-3">
+                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200/80">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Spend</span>
+                            <div class="text-sm font-extrabold text-slate-900 mt-0.5" id="modal-spend-kpi">&#2547;0</div>
+                        </div>
+                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200/80">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Orders Count</span>
+                            <div class="text-sm font-extrabold text-slate-900 mt-0.5" id="modal-orders-kpi">0</div>
+                        </div>
+                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200/80">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">First Purchase</span>
+                            <div class="text-xs font-bold text-slate-700 mt-1" id="modal-first-purchase">-</div>
+                        </div>
+                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200/80">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Last Purchase</span>
+                            <div class="text-xs font-bold text-slate-700 mt-1" id="modal-last-purchase">-</div>
+                        </div>
+                    </div>
+
+                    <!-- Top Products Table -->
+                    <div class="border border-slate-200 rounded-xl overflow-hidden">
+                        <div class="px-3.5 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-[11px] font-bold text-slate-700">
+                            <span>Top Purchased Printers & Consumables</span>
+                            <span class="text-[10px] text-slate-400 font-normal">Ranked by units ordered</span>
+                        </div>
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-white text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">
+                                <tr>
+                                    <th class="py-2.5 px-3">Product Name & Category</th>
+                                    <th class="py-2.5 px-3 text-center">Total Quantity</th>
+                                    <th class="py-2.5 px-3 text-right">Total Amount (BDT)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="modal-products-body" class="divide-y divide-slate-100">
+                                <!-- Injected products -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-end">
+                <button type="button" onclick="closeProfileModal()" class="px-4 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl transition">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== JAVASCRIPT CONTROLLER ===== -->
+    <script>
+        let currentBusinessType = 'all';
+        let currentPage = 1;
+        let currentPageSize = 25;
+        let searchQuery = '';
+        let searchDebounceTimer = null;
+        let activeCustomerId = null;
+        let currentCustomerData = null;
+
+        function esc(str) {
+            if (!str && str !== 0) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        // Sidebar toggle & collapse state
+        let isSidebarCollapsed = localStorage.getItem('sidebar_collapsed') === 'true';
+
+        function applySidebarState() {
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.getElementById('main-content');
+            const overlay = document.getElementById('sidebar-overlay');
+            if (!sidebar || !mainContent) return;
+
+            if (window.innerWidth >= 1024) {
+                if (overlay) overlay.classList.remove('active');
+                if (isSidebarCollapsed) {
+                    sidebar.classList.add('lg:-translate-x-full');
+                    sidebar.classList.remove('lg:translate-x-0');
+                    mainContent.classList.remove('lg:ml-64');
+                    mainContent.classList.add('lg:ml-0');
+                } else {
+                    sidebar.classList.remove('lg:-translate-x-full');
+                    sidebar.classList.add('lg:translate-x-0');
+                    mainContent.classList.add('lg:ml-64');
+                    mainContent.classList.remove('lg:ml-0');
+                }
+            } else {
+                mainContent.classList.remove('lg:ml-0');
+                mainContent.classList.add('lg:ml-64');
+                if (isSidebarCollapsed) {
+                    sidebar.classList.remove('translate-x-0');
+                    sidebar.classList.add('-translate-x-full');
+                    if (overlay) overlay.classList.remove('active');
+                } else {
+                    sidebar.classList.add('translate-x-0');
+                    sidebar.classList.remove('-translate-x-full');
+                    if (overlay) overlay.classList.add('active');
+                }
+            }
+        }
+
+        function toggleSidebar() {
+            isSidebarCollapsed = !isSidebarCollapsed;
+            localStorage.setItem('sidebar_collapsed', isSidebarCollapsed);
+            applySidebarState();
+        }
+        applySidebarState();
+        window.addEventListener('resize', applySidebarState);
+
+        // Load Sidebar Menus dynamically
+        async function loadSidebarMenus() {
+            try {
+                const res = await fetch('/api/menus');
+                const menus = await res.json();
+                renderSidebarNav(menus);
+            } catch (err) {
+                console.error('Failed to load sidebar menus:', err);
+            }
+        }
+
+        function renderSidebarNav(menus) {
+            const container = document.getElementById('sidebar-nav-container');
+            if (!container) return;
+            const sections = {};
+            (menus || []).forEach(m => {
+                const sec = m.section || 'General';
+                if (!sections[sec]) sections[sec] = [];
+                sections[sec].push(m);
+            });
+            let html = '';
+            const currentPath = window.location.pathname;
+
+            for (const [secTitle, items] of Object.entries(sections)) {
+                html += `<p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-3 mt-4 mb-2 first:mt-1">${esc(secTitle)}</p>`;
+                items.forEach((m, idx) => {
+                    const hasSubmenus = m.submenus && m.submenus.length > 0;
+                    const menuId = `menu-tree-${m.id || idx}`;
+                    const isAnyChildActive = hasSubmenus && m.submenus.some(s => s.url === currentPath || (s.url === '/menus/customer-kyc' && currentPath.includes('/customer-kyc')));
+                    const isDirectActive = !hasSubmenus && (currentPath === m.url || (m.url === '/menus/customer-kyc' && currentPath.includes('/customer-kyc')));
+
+                    if (hasSubmenus) {
+                        html += `
+                            <div class="menu-treeview-group">
+                                <button type="button" onclick="toggleSubmenu('${menuId}')" class="sidebar-nav-item w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium ${isAnyChildActive ? 'text-white bg-white/10' : 'text-slate-300 hover:text-white'} transition group">
+                                    <div class="flex items-center gap-3 overflow-hidden">
+                                        <div class="w-8 h-8 rounded-lg ${isAnyChildActive ? 'bg-blue-600 shadow-xs text-white' : 'bg-slate-800 text-slate-400 group-hover:text-white'} flex items-center justify-center shrink-0">
+                                            <i data-lucide="${esc(m.icon || 'folder')}" class="w-4 h-4"></i>
+                                        </div>
+                                        <div class="overflow-hidden text-left">
+                                            <span class="block truncate ${isAnyChildActive ? 'font-bold text-white' : 'font-medium'} text-xs">${esc(m.title)}</span>
+                                        </div>
+                                    </div>
+                                    <i id="${menuId}-arrow" data-lucide="chevron-right" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0 ${isAnyChildActive ? 'rotate-90 text-blue-400' : ''}"></i>
+                                </button>
+                                <div id="${menuId}-submenu" class="space-y-1 pl-4 pr-1 mt-1 border-l-2 border-slate-800 ml-4 ${isAnyChildActive ? '' : 'hidden'}">
+                                    ${m.submenus.map(sub => {
+                                        const isSubActive = currentPath === sub.url || (sub.url === '/menus/customer-kyc' && currentPath.includes('/customer-kyc'));
+                                        const isSubDisabled = sub.is_disabled === 1;
+                                        if (isSubDisabled) {
+                                            return `<div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-500 cursor-not-allowed opacity-60"><i data-lucide="${esc(sub.icon || 'circle')}" class="w-2.5 h-2.5 text-slate-600 shrink-0"></i><span class="truncate">${esc(sub.title)}</span></div>`;
+                                        }
+                                        const subActiveStyle = isSubActive ? 'bg-blue-600 text-white font-bold shadow-xs' : 'text-slate-400 hover:text-white hover:bg-white/5';
+                                        return `<a href="${esc(sub.url)}" class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition ${subActiveStyle}">
+                                            <i data-lucide="${esc(sub.icon || 'circle')}" class="w-2.5 h-2.5 ${isSubActive ? 'text-white fill-white' : 'text-slate-400'} shrink-0"></i>
+                                            <span class="truncate">${esc(sub.title)}</span>
+                                        </a>`;
+                                    }).join('')}
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        const directActiveStyle = isDirectActive ? 'active text-white font-bold' : 'text-slate-300 hover:text-white';
+                        html += `
+                            <a href="${esc(m.url)}" class="sidebar-nav-item flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium ${directActiveStyle} transition group">
+                                <div class="flex items-center gap-3 overflow-hidden">
+                                    <div class="w-8 h-8 rounded-lg ${isDirectActive ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 group-hover:text-white'} flex items-center justify-center shrink-0">
+                                        <i data-lucide="${esc(m.icon || 'circle')}" class="w-4 h-4"></i>
+                                    </div>
+                                    <span class="truncate text-xs">${esc(m.title)}</span>
+                                </div>
+                            </a>
+                        `;
+                    }
+                });
+            }
+            container.innerHTML = html;
+            if (window.lucide) lucide.createIcons();
+        }
+
+        function toggleSubmenu(id) {
+            const sub = document.getElementById(`${id}-submenu`);
+            const arrow = document.getElementById(`${id}-arrow`);
+            if (!sub) return;
+            sub.classList.toggle('hidden');
+            if (arrow) arrow.classList.toggle('rotate-90');
+        }
+
+        // Fetch Customer Directory
+        async function fetchDirectory() {
+            const icon = document.getElementById('refresh-icon');
+            if (icon) icon.classList.add('animate-spin');
+
+            const tbody = document.getElementById('kyc-table-body');
+            const emptyState = document.getElementById('empty-state');
+            const errorState = document.getElementById('error-state');
+
+            try {
+                const params = new URLSearchParams({
+                    business_type: currentBusinessType,
+                    page: currentPage,
+                    page_size: currentPageSize,
+                });
+                if (searchQuery) params.append('q', searchQuery);
+
+                const res = await fetch(`/api/customer-kyc/customers?${params.toString()}`);
+                if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+                const data = await res.json();
+
+                renderSummary(data.summary);
+                renderBusinessTypes(data.business_types);
+                renderCustomers(data.customers);
+                renderPagination(data.pagination);
+
+                if (emptyState) emptyState.classList.toggle('hidden', data.customers && data.customers.length > 0);
+                if (errorState) errorState.classList.add('hidden');
+            } catch (err) {
+                console.error('Failed to load customer directory:', err);
+                if (errorState) {
+                    errorState.classList.remove('hidden');
+                    document.getElementById('error-message-text').textContent = err.message || 'Server error';
+                }
+                if (tbody) tbody.innerHTML = '';
+            } finally {
+                if (icon) icon.classList.remove('animate-spin');
+                if (window.lucide) lucide.createIcons();
+            }
+        }
+
+        function renderSummary(summary) {
+            if (!summary) return;
+            const total = summary.total_customers || 0;
+            const profiled = summary.profiled_customers || 0;
+            const unprofiled = summary.unprofiled_customers || 0;
+            const withSales = summary.customers_with_sales || 0;
+            const zeroSales = summary.customers_without_sales || 0;
+
+            document.getElementById('kpi-total-cust').textContent = total.toLocaleString();
+            document.getElementById('kpi-profiled-cust').textContent = profiled.toLocaleString();
+            document.getElementById('kpi-unprofiled-cust').textContent = unprofiled.toLocaleString();
+            document.getElementById('kpi-with-sales').textContent = withSales.toLocaleString();
+            document.getElementById('kpi-zero-sales').textContent = `${zeroSales.toLocaleString()}`;
+
+            const pct = total > 0 ? Math.round((profiled / total) * 100) : 0;
+            document.getElementById('kpi-profiled-pct').textContent = `${pct}% profiled`;
+
+            const ts = summary.report_generated_at ? new Date(summary.report_generated_at).toLocaleTimeString() : new Date().toLocaleTimeString();
+            document.getElementById('report-timestamp').textContent = `Updated: ${ts}`;
+        }
+
+        function renderBusinessTypes(types) {
+            const select = document.getElementById('business-type-select');
+            if (!select || !types) return;
+            const currentVal = select.value;
+
+            // Keep default two options
+            let optionsHtml = `
+                <option value="all">Filter: All Business Types</option>
+                <option value="none" ${currentVal === 'none' ? 'selected' : ''}>No Business Profile Added</option>
+            `;
+            types.forEach(t => {
+                const isSel = (t === currentVal) ? 'selected' : '';
+                optionsHtml += `<option value="${esc(t)}" ${isSel}>${esc(t)}</option>`;
+            });
+            select.innerHTML = optionsHtml;
+        }
+
+        function renderCustomers(customers) {
+            const tbody = document.getElementById('kyc-table-body');
+            if (!tbody) return;
+
+            if (!customers || customers.length === 0) {
+                tbody.innerHTML = '';
+                return;
+            }
+
+            let html = '';
+            customers.forEach(c => {
+                // Phone & Call
+                let phoneHtml = '<span class="text-slate-400 italic">No phone</span>';
+                if (c.phone) {
+                    if (c.has_valid_phone && c.dial_phone) {
+                        phoneHtml = `
+                            <div class="flex items-center gap-1.5 mt-0.5">
+                                <span class="font-mono text-slate-700 font-semibold">${esc(c.phone)}</span>
+                                <a href="tel:${esc(c.dial_phone)}" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[10px] border border-emerald-200 transition" title="Call">
+                                    <i data-lucide="phone-call" class="w-3 h-3"></i> Call
+                                </a>
+                            </div>
+                        `;
+                    } else {
+                        phoneHtml = `<span class="font-mono text-slate-600">${esc(c.phone)}</span>`;
+                    }
+                }
+
+                // Business Profile badge & name
+                let profileHtml = '';
+                if (c.has_business_profile && (c.business_name || c.business_type)) {
+                    profileHtml = `
+                        <div class="font-semibold text-slate-900">${esc(c.business_name || 'Business Name Unspecified')}</div>
+                        <div class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 mt-1">
+                            <i data-lucide="tag" class="w-2.5 h-2.5"></i> ${esc(c.business_type || 'Unclassified')}
+                        </div>
+                    `;
+                } else {
+                    profileHtml = `
+                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-100 text-slate-500 border border-slate-200">
+                            No business profile added
+                        </span>
+                    `;
+                }
+
+                // Orders & Spend
+                let salesHtml = '';
+                if (c.order_count > 0) {
+                    salesHtml = `
+                        <div class="font-bold text-slate-900">&#2547;${c.total_spend.toLocaleString()}</div>
+                        <div class="text-[10px] text-slate-500 font-medium mt-0.5">${c.order_count} order(s)</div>
+                    `;
+                } else {
+                    salesHtml = `
+                        <span class="text-slate-400 italic">No sales recorded</span>
+                    `;
+                }
+
+                // Last purchase
+                let lpHtml = c.last_purchase_date
+                    ? `<span class="font-medium text-slate-700">${c.last_purchase_date}</span>`
+                    : `<span class="text-slate-400 italic">Never</span>`;
+
+                html += `
+                    <tr class="hover:bg-slate-50/80 transition">
+                        <td class="py-3 px-4">
+                            <div class="font-bold text-slate-900">${esc(c.customer_name)}</div>
+                            <div class="text-[10px] font-mono text-slate-400 bg-slate-100 px-1 py-0.2 rounded w-fit mt-0.5">${esc(c.customer_id)}</div>
+                        </td>
+                        <td class="py-3 px-4">
+                            ${phoneHtml}
+                        </td>
+                        <td class="py-3 px-4">
+                            ${profileHtml}
+                        </td>
+                        <td class="py-3 px-4 text-center">
+                            ${salesHtml}
+                        </td>
+                        <td class="py-3 px-4 text-center">
+                            ${lpHtml}
+                        </td>
+                        <td class="py-3 px-4 text-right">
+                            <button type="button" onclick="openProfileModal('${esc(c.customer_id)}')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs transition border border-blue-200/60 shadow-2xs">
+                                <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+                                <span>View Profile</span>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            tbody.innerHTML = html;
+        }
+
+        function renderPagination(pagination) {
+            if (!pagination) return;
+            const total = pagination.total_items || 0;
+            const start = total === 0 ? 0 : (pagination.page - 1) * pagination.page_size + 1;
+            const end = Math.min(total, pagination.page * pagination.page_size);
+
+            document.getElementById('page-start').textContent = start;
+            document.getElementById('page-end').textContent = end;
+            document.getElementById('page-total').textContent = total.toLocaleString();
+
+            document.getElementById('current-page-num').textContent = pagination.page;
+            document.getElementById('prev-page-btn').disabled = !pagination.has_prev;
+            document.getElementById('next-page-btn').disabled = !pagination.has_next;
+        }
+
+        function changePage(delta) {
+            currentPage = Math.max(1, currentPage + delta);
+            fetchDirectory();
+        }
+
+        function handlePageSizeChange() {
+            currentPageSize = parseInt(document.getElementById('page-size-select').value, 10) || 25;
+            currentPage = 1;
+            fetchDirectory();
+        }
+
+        function handleFilterChange() {
+            currentBusinessType = document.getElementById('business-type-select').value;
+            currentPage = 1;
+            fetchDirectory();
+        }
+
+        function handleSearchKeyup(e) {
+            clearTimeout(searchDebounceTimer);
+            searchDebounceTimer = setTimeout(() => {
+                searchQuery = document.getElementById('search-input').value.trim();
+                currentPage = 1;
+                fetchDirectory();
+            }, 300);
+        }
+
+        function clearFilters() {
+            document.getElementById('search-input').value = '';
+            document.getElementById('business-type-select').value = 'all';
+            searchQuery = '';
+            currentBusinessType = 'all';
+            currentPage = 1;
+            fetchDirectory();
+        }
+
+        // ===== PROFILE MODAL & EDIT ACTIONS =====
+        async function openProfileModal(customerId) {
+            activeCustomerId = customerId;
+            const modal = document.getElementById('profile-modal');
+            modal.classList.remove('hidden');
+
+            document.getElementById('modal-customer-name').textContent = 'Loading...';
+            document.getElementById('modal-customer-id').textContent = customerId;
+            document.getElementById('modal-phone-display').innerHTML = '-';
+            document.getElementById('modal-email-display').textContent = '-';
+            document.getElementById('modal-address-display').textContent = '-';
+            document.getElementById('modal-spend-kpi').innerHTML = '&#2547;0';
+            document.getElementById('modal-orders-kpi').textContent = '0';
+            document.getElementById('modal-first-purchase').textContent = '-';
+            document.getElementById('modal-last-purchase').textContent = '-';
+            document.getElementById('modal-products-body').innerHTML = '<tr><td colspan="3" class="py-4 text-center text-slate-400">Loading products...</td></tr>';
+            cancelEditMode();
+
+            try {
+                const res = await fetch(`/api/customer-kyc/customers/${encodeURIComponent(customerId)}`);
+                if (!res.ok) throw new Error('Customer profile not found');
+                const data = await res.json();
+                currentCustomerData = data;
+
+                populateProfileModal(data);
+            } catch (err) {
+                console.error('Failed to load profile:', err);
+                document.getElementById('modal-customer-name').textContent = 'Error Loading Profile';
+                document.getElementById('modal-products-body').innerHTML = `<tr><td colspan="3" class="py-4 text-center text-rose-500">${esc(err.message)}</td></tr>`;
+            } finally {
+                if (window.lucide) lucide.createIcons();
+            }
+        }
+
+        function populateProfileModal(data) {
+            document.getElementById('modal-customer-name').textContent = data.customer_name || 'Customer';
+            document.getElementById('modal-customer-id').textContent = data.customer_id;
+
+            // Status Badge
+            const badge = document.getElementById('modal-profile-status-badge');
+            if (data.has_business_profile) {
+                badge.className = "px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200";
+                badge.textContent = "Profile Enriched";
+            } else {
+                badge.className = "px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-500 border border-slate-200";
+                badge.textContent = "No business profile added";
+            }
+
+            // Contact details
+            const cd = data.contact_details || {};
+            if (cd.phone) {
+                if (cd.has_valid_phone && cd.dial_phone) {
+                    document.getElementById('modal-phone-display').innerHTML = `
+                        <span>${esc(cd.phone)}</span>
+                        <a href="tel:${esc(cd.dial_phone)}" class="ml-1.5 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold hover:bg-emerald-200 transition">
+                            <i data-lucide="phone-call" class="w-2.5 h-2.5 inline"></i> Call
+                        </a>
+                    `;
+                } else {
+                    document.getElementById('modal-phone-display').textContent = cd.phone;
+                }
+            } else {
+                document.getElementById('modal-phone-display').textContent = 'Not provided';
+            }
+            document.getElementById('modal-email-display').textContent = cd.email || 'Not provided';
+            document.getElementById('modal-address-display').textContent = cd.address || 'Not provided';
+
+            // Business Profile View
+            const bp = data.business_profile || {};
+            document.getElementById('view-business-name').textContent = bp.business_name || 'No business profile added';
+            document.getElementById('view-business-type').textContent = bp.business_type || 'Not specified';
+            document.getElementById('view-contact-person').textContent = bp.contact_person || cd.default_contact_person || 'Not specified';
+            document.getElementById('view-business-notes').textContent = bp.notes || 'No business notes recorded.';
+
+            const auditBox = document.getElementById('modal-audit-info');
+            if (bp.updated_at) {
+                auditBox.innerHTML = `Updated by <strong>${esc(bp.updated_by_username || 'admin')}</strong> on ${esc(bp.updated_at)}`;
+            } else {
+                auditBox.innerHTML = `No profile updates recorded`;
+            }
+
+            // Prefill edit form
+            const editName = document.getElementById('edit-business-name');
+            const editType = document.getElementById('edit-business-type');
+            const editPerson = document.getElementById('edit-contact-person');
+            const editNotes = document.getElementById('edit-notes');
+            if (editName) editName.value = bp.business_name || '';
+            if (editType) editType.value = bp.business_type || '';
+            if (editPerson) editPerson.value = bp.contact_person || cd.default_contact_person || '';
+            if (editNotes) editNotes.value = bp.notes || '';
+
+            // Purchase summary
+            const ps = data.purchase_summary || {};
+            document.getElementById('modal-spend-kpi').innerHTML = `&#2547;${(ps.total_spend || 0).toLocaleString()}`;
+            document.getElementById('modal-orders-kpi').textContent = ps.order_count || 0;
+            document.getElementById('modal-first-purchase').textContent = ps.first_purchase_date || 'None';
+            document.getElementById('modal-last-purchase').textContent = ps.last_purchase_date ? ps.last_purchase_date.split(' ')[0] : 'None';
+
+            // Products table
+            const prods = ps.top_products || [];
+            if (prods.length > 0) {
+                let html = '';
+                prods.forEach(p => {
+                    html += `
+                        <tr class="hover:bg-slate-50">
+                            <td class="py-2.5 px-3">
+                                <div class="font-bold text-slate-900">${esc(p.product_name)}</div>
+                                <div class="text-[10px] text-slate-400 mt-0.5">${esc(p.category)} &bull; ID: ${esc(p.product_id)}</div>
+                            </td>
+                            <td class="py-2.5 px-3 text-center font-mono font-bold text-slate-800">
+                                ${p.total_quantity}
+                            </td>
+                            <td class="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
+                                &#2547;${(p.total_amount || 0).toLocaleString()}
+                            </td>
+                        </tr>
+                    `;
+                });
+                document.getElementById('modal-products-body').innerHTML = html;
+            } else {
+                document.getElementById('modal-products-body').innerHTML = `
+                    <tr>
+                        <td colspan="3" class="py-6 text-center text-slate-400 italic">
+                            No printer or ink purchases recorded for this customer.
+                        </td>
+                    </tr>
+                `;
+            }
+
+            if (window.lucide) lucide.createIcons();
+        }
+
+        function enableEditMode() {
+            document.getElementById('kyc-view-mode').classList.add('hidden');
+            const form = document.getElementById('kyc-edit-form');
+            if (form) form.classList.remove('hidden');
+        }
+
+        function cancelEditMode() {
+            const form = document.getElementById('kyc-edit-form');
+            if (form) form.classList.add('hidden');
+            document.getElementById('kyc-view-mode').classList.remove('hidden');
+            hideModalAlert();
+        }
+
+        function showModalAlert(msg, isError = false) {
+            const el = document.getElementById('modal-alert');
+            el.className = isError
+                ? "p-3 rounded-xl text-xs font-semibold bg-rose-50 text-rose-800 border border-rose-200"
+                : "p-3 rounded-xl text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200";
+            el.textContent = msg;
+            el.classList.remove('hidden');
+        }
+
+        function hideModalAlert() {
+            const el = document.getElementById('modal-alert');
+            el.classList.add('hidden');
+        }
+
+        async function handleProfileSubmit(e) {
+            e.preventDefault();
+            if (!activeCustomerId) return;
+
+            const btn = document.getElementById('save-profile-btn');
+            btn.disabled = true;
+            btn.innerHTML = `<span class="animate-spin inline-block mr-1">&bull;</span> Saving...`;
+
+            const payload = {
+                business_name: document.getElementById('edit-business-name').value.trim(),
+                business_type: document.getElementById('edit-business-type').value.trim(),
+                contact_person: document.getElementById('edit-contact-person').value.trim(),
+                notes: document.getElementById('edit-notes').value.trim(),
+            };
+
+            try {
+                const res = await fetch(`/api/customer-kyc/customers/${encodeURIComponent(activeCustomerId)}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const result = await res.json();
+                if (!res.ok) {
+                    throw new Error(result.message || 'Failed to update KYC profile');
+                }
+
+                showModalAlert(result.message || 'Business profile updated successfully.', false);
+                if (result.data) {
+                    populateProfileModal(result.data);
+                }
+                cancelEditMode();
+                fetchDirectory(); // Refresh directory list in background
+            } catch (err) {
+                console.error('Error saving profile:', err);
+                showModalAlert(err.message || 'Failed to save business profile', true);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<i data-lucide="save" class="w-3.5 h-3.5"></i><span>Save Changes</span>`;
+                if (window.lucide) lucide.createIcons();
+            }
+        }
+
+        function closeProfileModal() {
+            document.getElementById('profile-modal').classList.add('hidden');
+            activeCustomerId = null;
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeProfileModal();
+            }
+        });
+
+        // Initialize
+        loadSidebarMenus();
+        fetchDirectory();
+    </script>
+    <script src="/static/ai_assistant.js"></script>
+</body>
+</html>

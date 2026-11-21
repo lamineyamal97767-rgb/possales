@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dormant Clients — Printer Analytics</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .sidebar-scroll::-webkit-scrollbar { width: 4px; }
+        .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+        .sidebar-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+        .sidebar-nav-item { transition: all 0.15s ease; }
+        .sidebar-nav-item:hover { background: rgba(255,255,255,0.08); }
+        .sidebar-nav-item.active { background: rgba(59, 130, 246, 0.25); border-right: 3px solid #3b82f6; }
+        @media (max-width: 1023px) {
+            .sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 40; display: none; }
+            .sidebar-overlay.active { display: block; }
+        }
+        .modal-scroll::-webkit-scrollbar { width: 6px; }
+        .modal-scroll::-webkit-scrollbar-track { background: #f1f5f9; }
+        .modal-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex">
+
+    <!-- Mobile Sidebar Overlay -->
+    <div id="sidebar-overlay" class="sidebar-overlay lg:hidden" onclick="toggleSidebar()"></div>
+
+    <!-- ===== SIDEBAR ===== -->
+    <aside id="sidebar" class="fixed top-0 left-0 z-50 h-screen w-64 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-white flex flex-col transition-all duration-300 ease-in-out -translate-x-full lg:translate-x-0 shadow-2xl">
+        <!-- Brand Header -->
+        <div class="h-16 flex items-center gap-3 px-5 border-b border-white/10 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20 text-white font-bold">
+                <i data-lucide="printer" class="w-5 h-5"></i>
+            </div>
+            <div>
+                <h1 class="text-sm font-bold tracking-tight text-white leading-none">Printer Analytics</h1>
+                <p class="text-[10px] text-slate-400 font-medium mt-0.5">Fleet Ops & Intelligence</p>
+            </div>
+        </div>
+
+        <!-- Navigation Links -->
+        <nav class="flex-1 overflow-y-auto sidebar-scroll px-3 py-4 space-y-1" id="sidebar-nav-container">
+            <div class="px-3 py-4 text-xs text-slate-400 flex items-center gap-2">
+                <div class="w-4 h-4 border-2 border-slate-500 border-t-blue-500 rounded-full animate-spin"></div>
+                <span>Loading menus...</span>
+            </div>
+        </nav>
+
+        <!-- Sidebar Footer -->
+        <div class="p-3 border-t border-white/10 shrink-0 bg-slate-950/40">
+            <div class="flex items-center justify-between px-2 py-1.5 text-xs text-slate-400">
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span class="font-medium text-slate-300">Database Live</span>
+                </div>
+                <span class="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-white/10 text-slate-300">
+                    {{ user.role if user and user.role else 'Admin' }}
+                </span>
+            </div>
+            <a href="/logout" class="mt-2 w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/10 transition">
+                <i data-lucide="log-out" class="w-4 h-4"></i>
+                <span>Sign Out</span>
+            </a>
+        </div>
+    </aside>
+
+    <!-- ===== MAIN CONTENT AREA ===== -->
+    <div id="main-content" class="transition-all duration-300 ease-in-out lg:ml-64 flex-1 flex flex-col min-h-screen">
+
+        <!-- Top Header Bar -->
+        <header class="sticky top-0 z-30 h-16 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-4 sm:px-6 flex items-center justify-between shadow-xs">
+            <div class="flex items-center gap-3">
+                <button type="button" onclick="toggleSidebar()" class="p-2 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 transition flex items-center justify-center" aria-label="Toggle navigation menu">
+                    <i data-lucide="menu" class="w-5 h-5"></i>
+                </button>
+                <div class="flex items-center gap-2 text-xs font-medium text-slate-500">
+                    <a href="/menus/dashboard" class="hover:text-blue-600 transition">Dashboard</a>
+                    <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+                    <span>Client Operations</span>
+                    <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+                    <span class="text-slate-900 font-semibold">Dormant Clients</span>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2 sm:gap-3">
+                <button type="button" onclick="fetchReport()" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg shadow-xs transition" title="Refresh Report">
+                    <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-slate-500" id="refresh-icon"></i>
+                    <span class="hidden sm:inline">Refresh</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Body -->
+        <main class="flex-1 p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl w-full mx-auto">
+
+            <!-- Title & Context -->
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                    <h2 class="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5">
+                        <span class="p-2 bg-rose-50 text-rose-600 rounded-xl border border-rose-100">
+                            <i data-lucide="user-x" class="w-6 h-6"></i>
+                        </span>
+                        Dormant Clients Report
+                    </h2>
+                    <p class="text-xs sm:text-sm text-slate-500 mt-1">
+                        Identify and analyze customers whose purchase intervals exceed their individual buying cadence.
+                    </p>
+                </div>
+                <div class="text-right text-xs text-slate-400">
+                    <div id="report-timestamp">Report: Loading...</div>
+                    <div class="text-[11px] text-slate-500 mt-0.5">Cadence: Threshold = Avg Interval &times; 1.5</div>
+                </div>
+            </div>
+
+            <!-- Stale Sales Date Warning Banner -->
+            <div id="stale-warning-banner" class="hidden rounded-xl border border-amber-200 bg-amber-50/90 p-4 shadow-xs">
+                <div class="flex items-start gap-3">
+                    <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-600 shrink-0 mt-0.5"></i>
+                    <div class="flex-1 text-xs text-amber-900">
+                        <span class="font-bold text-amber-950">Latest Sales Data is Outdated:</span>
+                        The most recent sales record in the database is <strong id="banner-stale-date" class="underline"></strong>
+                        (<span id="banner-stale-days"></span> days ago).
+                        Please verify whether recent sales invoices have been uploaded to the database.
+                    </div>
+                </div>
+            </div>
+
+            <!-- KPI SUMMARY CARDS -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <!-- Card 1: Dormant Customers -->
+                <div class="rounded-2xl bg-white border border-rose-100 p-5 shadow-xs relative overflow-hidden group hover:shadow-md transition">
+                    <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-rose-500 to-red-600"></div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold uppercase tracking-wider text-rose-600">Dormant Clients</span>
+                        <div class="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
+                            <i data-lucide="user-x" class="w-5 h-5"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3 flex items-baseline gap-2">
+                        <span class="text-2xl sm:text-3xl font-extrabold text-slate-900" id="kpi-dormant-count">-</span>
+                        <span class="text-xs font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
+                            Immediate Follow-up
+                        </span>
+                    </div>
+                    <p class="text-xs text-slate-500 mt-1">Clients exceeding 1.5x their average purchase interval</p>
+                </div>
+
+                <!-- Card 2: Insufficient Data -->
+                <div class="rounded-2xl bg-white border border-amber-100 p-5 shadow-xs relative overflow-hidden group hover:shadow-md transition">
+                    <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-400 to-amber-500"></div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold uppercase tracking-wider text-amber-700">Insufficient Data</span>
+                        <div class="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                            <i data-lucide="help-circle" class="w-5 h-5"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3 flex items-baseline gap-2">
+                        <span class="text-2xl sm:text-3xl font-extrabold text-slate-900" id="kpi-insufficient-count">-</span>
+                        <span class="text-xs font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                            &lt; 3 Purchase Days
+                        </span>
+                    </div>
+                    <p class="text-xs text-slate-500 mt-1">Fewer than 3 purchase days; cadence cannot be calculated</p>
+                </div>
+
+                <!-- Card 3: Active Cadence -->
+                <div class="rounded-2xl bg-white border border-emerald-100 p-5 shadow-xs relative overflow-hidden group hover:shadow-md transition">
+                    <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-600"></div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold uppercase tracking-wider text-emerald-700">Active Cadence</span>
+                        <div class="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                            <i data-lucide="user-check" class="w-5 h-5"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3 flex items-baseline gap-2">
+                        <span class="text-2xl sm:text-3xl font-extrabold text-slate-900" id="kpi-active-count">-</span>
+                        <span class="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                            On Schedule
+                        </span>
+                    </div>
+                    <p class="text-xs text-slate-500 mt-1">Purchasing within regular expected schedule</p>
+                </div>
+
+                <!-- Card 4: Latest Sales Record -->
+                <div class="rounded-2xl bg-white border border-blue-100 p-5 shadow-xs relative overflow-hidden group hover:shadow-md transition">
+                    <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600"></div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold uppercase tracking-wider text-blue-700">Latest Sales Date</span>
+                        <div class="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                            <i data-lucide="calendar" class="w-5 h-5"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <div class="text-base sm:text-lg font-extrabold text-slate-900 truncate" id="kpi-latest-sales-date">-</div>
+                        <div class="text-xs font-medium text-slate-500 mt-0.5" id="kpi-total-evaluated">
+                            Total evaluated: - clients
+                        </div>
+                    </div>
+                    <p class="text-[11px] text-slate-400 mt-1">Most recent invoice recorded in database</p>
+                </div>
+            </div>
+
+            <!-- FILTER & SEARCH PANEL -->
+            <div class="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs space-y-4">
+                <!-- Status Tabs -->
+                <div class="flex flex-wrap items-center gap-2 border-b border-slate-100 pb-3">
+                    <button type="button" onclick="setStatusFilter('all')" id="tab-all" class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-slate-900 text-white shadow-xs">
+                        <i data-lucide="users" class="w-3.5 h-3.5"></i>
+                        <span>All Clients</span>
+                        <span id="tab-count-all" class="px-1.5 py-0.2 bg-white/20 rounded-full text-[10px]">-</span>
+                    </button>
+                    <button type="button" onclick="setStatusFilter('dormant')" id="tab-dormant" class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-slate-100 text-slate-600 hover:bg-slate-200">
+                        <i data-lucide="user-x" class="w-3.5 h-3.5 text-rose-500"></i>
+                        <span>Dormant</span>
+                        <span id="tab-count-dormant" class="px-1.5 py-0.2 bg-rose-100 text-rose-700 rounded-full text-[10px] font-bold">-</span>
+                    </button>
+                    <button type="button" onclick="setStatusFilter('insufficient_data')" id="tab-insufficient_data" class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-slate-100 text-slate-600 hover:bg-slate-200">
+                        <i data-lucide="help-circle" class="w-3.5 h-3.5 text-amber-500"></i>
+                        <span>Insufficient Data</span>
+                        <span id="tab-count-insufficient" class="px-1.5 py-0.2 bg-amber-100 text-amber-800 rounded-full text-[10px] font-bold">-</span>
+                    </button>
+                    <button type="button" onclick="setStatusFilter('active')" id="tab-active" class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-slate-100 text-slate-600 hover:bg-slate-200">
+                        <i data-lucide="user-check" class="w-3.5 h-3.5 text-emerald-500"></i>
+                        <span>Active Regular</span>
+                        <span id="tab-count-active" class="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded-full text-[10px] font-bold">-</span>
+                    </button>
+                </div>
+
+                <!-- Search & Sort Row -->
+                <div class="grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
+                    <!-- Search Input -->
+                    <div class="sm:col-span-6 relative">
+                        <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                        <input type="text" id="search-input" onkeyup="handleSearchKeyup(event)" placeholder="Search by customer name, phone, or ID..." class="w-full pl-10 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition">
+                    </div>
+
+                    <!-- Sort By -->
+                    <div class="sm:col-span-3">
+                        <select id="sort-by-select" onchange="handleSortChange()" class="w-full py-2 px-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium">
+                            <option value="days_overdue">Sort: Days Overdue</option>
+                            <option value="days_since_last">Sort: Days Inactive</option>
+                            <option value="customer_name">Sort: Customer Name (A-Z)</option>
+                            <option value="last_purchase_date">Sort: Last Purchase Date</option>
+                            <option value="avg_interval">Sort: Average Interval</option>
+                        </select>
+                    </div>
+
+                    <!-- Sort Order -->
+                    <div class="sm:col-span-3 flex items-center gap-2">
+                        <select id="sort-order-select" onchange="handleSortChange()" class="w-full py-2 px-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium">
+                            <option value="desc">Descending (High to Low)</option>
+                            <option value="asc">Ascending (Low to High)</option>
+                        </select>
+                        <button type="button" onclick="clearFilters()" class="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition shrink-0" title="Clear Filters">
+                            <i data-lucide="x" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CLIENTS DATA TABLE CONTAINER -->
+            <div class="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead>
+                            <tr class="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                                <th class="py-3.5 px-4">Customer Info</th>
+                                <th class="py-3.5 px-4">Last Purchase Date</th>
+                                <th class="py-3.5 px-4 text-center">Avg Interval</th>
+                                <th class="py-3.5 px-4 text-center">Inactivity & Delay</th>
+                                <th class="py-3.5 px-4 text-center">Status</th>
+                                <th class="py-3.5 px-4 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="clients-table-body" class="divide-y divide-slate-100">
+                            <!-- Dynamic rows injected here -->
+                            <tr>
+                                <td colspan="6" class="py-12 text-center text-slate-400">
+                                    <div class="flex flex-col items-center justify-center gap-2">
+                                        <div class="w-6 h-6 border-2 border-slate-400 border-t-blue-600 rounded-full animate-spin"></div>
+                                        <span>Loading dormant clients data...</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Table Empty State -->
+                <div id="empty-state" class="hidden py-16 px-4 text-center">
+                    <div class="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+                        <i data-lucide="inbox" class="w-6 h-6"></i>
+                    </div>
+                    <h3 class="text-sm font-bold text-slate-800">No Records Found</h3>
+                    <p class="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                        No customer records matched your search query or filters. Try adjusting your search keywords or filter criteria.
+                    </p>
+                </div>
+
+                <!-- Table Error State -->
+                <div id="error-state" class="hidden py-12 px-4 text-center bg-rose-50/50">
+                    <div class="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-3">
+                        <i data-lucide="alert-circle" class="w-6 h-6"></i>
+                    </div>
+                    <h3 class="text-sm font-bold text-rose-900">Failed to Load Report Data</h3>
+                    <p class="text-xs text-rose-700 mt-1 max-w-sm mx-auto" id="error-message-text">
+                        An error occurred while fetching report data from the server. Please try again.
+                    </p>
+                    <button type="button" onclick="fetchReport()" class="mt-3 px-4 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition">
+                        Retry
+                    </button>
+                </div>
+
+                <!-- Pagination Footer -->
+                <div class="p-4 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+                    <div class="flex items-center gap-2">
+                        <span>Showing</span>
+                        <span id="page-start" class="font-bold text-slate-700">0</span>
+                        <span>to</span>
+                        <span id="page-end" class="font-bold text-slate-700">0</span>
+                        <span>of</span>
+                        <span id="page-total" class="font-bold text-slate-900">0</span>
+                        <span>clients</span>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <select id="page-size-select" onchange="handlePageSizeChange()" class="py-1 px-2.5 text-xs bg-white border border-slate-200 rounded-lg font-medium text-slate-700 focus:outline-hidden">
+                            <option value="15">15 per page</option>
+                            <option value="25" selected>25 per page</option>
+                            <option value="50">50 per page</option>
+                            <option value="100">100 per page</option>
+                        </select>
+
+                        <div class="flex items-center gap-1">
+                            <button type="button" id="prev-page-btn" onclick="changePage(-1)" class="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed transition" disabled>
+                                <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                            </button>
+                            <span id="current-page-num" class="px-3 py-1 font-bold text-slate-800 bg-white border border-slate-200 rounded-lg">1</span>
+                            <button type="button" id="next-page-btn" onclick="changePage(1)" class="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed transition" disabled>
+                                <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- ===== CUSTOMER PURCHASE HISTORY MODAL ===== -->
+    <div id="history-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs hidden transition-opacity">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+            <!-- Modal Header -->
+            <div class="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50/80">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                        <i data-lucide="history" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-sm sm:text-base font-bold text-slate-900" id="modal-customer-name">Customer Name</h3>
+                        <p class="text-xs text-slate-500 font-mono mt-0.5" id="modal-customer-id">CS00000000</p>
+                    </div>
+                </div>
+                <button type="button" onclick="closeHistoryModal()" class="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded-xl transition">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Modal Content (Scrollable) -->
+            <div class="p-5 overflow-y-auto modal-scroll space-y-5 flex-1 text-xs">
+                <!-- Customer Details Bar -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 rounded-xl p-3 border border-slate-200/60">
+                    <div>
+                        <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Phone & Mobile</span>
+                        <div class="mt-0.5 font-semibold text-slate-800 flex items-center gap-1.5" id="modal-phone-box">
+                            -
+                        </div>
+                    </div>
+                    <div>
+                        <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Address</span>
+                        <div class="mt-0.5 font-medium text-slate-700 truncate" id="modal-address">-</div>
+                    </div>
+                    <div>
+                        <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Cadence Status</span>
+                        <div class="mt-0.5" id="modal-status-badge">-</div>
+                    </div>
+                </div>
+
+                <!-- Cadence Calculation Explanation -->
+                <div class="rounded-xl border border-blue-100 bg-blue-50/50 p-4 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="font-bold text-slate-900 text-xs flex items-center gap-1.5 text-blue-900">
+                            <i data-lucide="calculator" class="w-4 h-4 text-blue-600"></i>
+                            Cadence Calculation (Analysis across up to 6 latest purchase days)
+                        </span>
+                        <span class="text-[11px] text-blue-700 font-medium" id="modal-distinct-days-text">
+                            0 distinct purchase days
+                        </span>
+                    </div>
+
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                        <div class="bg-white p-2.5 rounded-xl border border-blue-100/80 shadow-2xs">
+                            <div class="text-[10px] text-slate-500 font-bold uppercase">Avg Interval</div>
+                            <div class="text-sm font-extrabold text-blue-700 mt-0.5" id="modal-avg-interval">-</div>
+                        </div>
+                        <div class="bg-white p-2.5 rounded-xl border border-blue-100/80 shadow-2xs">
+                            <div class="text-[10px] text-slate-500 font-bold uppercase">1.5x Threshold</div>
+                            <div class="text-sm font-extrabold text-amber-700 mt-0.5" id="modal-threshold">-</div>
+                        </div>
+                        <div class="bg-white p-2.5 rounded-xl border border-blue-100/80 shadow-2xs">
+                            <div class="text-[10px] text-slate-500 font-bold uppercase">Days Inactive</div>
+                            <div class="text-sm font-extrabold text-slate-800 mt-0.5" id="modal-days-since">-</div>
+                        </div>
+                        <div class="bg-white p-2.5 rounded-xl border border-blue-100/80 shadow-2xs">
+                            <div class="text-[10px] text-slate-500 font-bold uppercase">Days Overdue</div>
+                            <div class="text-sm font-extrabold text-rose-600 mt-0.5" id="modal-days-overdue">-</div>
+                        </div>
+                    </div>
+
+                    <!-- Intervals timeline -->
+                    <div id="modal-intervals-container" class="pt-2 border-t border-blue-100/60 text-[11px] text-slate-600">
+                        <!-- Injected dynamic intervals -->
+                    </div>
+                </div>
+
+                <!-- Recent Invoices Table -->
+                <div>
+                    <h4 class="font-bold text-slate-900 text-xs mb-2 flex items-center justify-between">
+                        <span>Recent Invoices</span>
+                        <span class="text-[10px] text-slate-400 font-normal">Multiple invoices on the same day count as 1 purchase day</span>
+                    </h4>
+                    <div class="border border-slate-200 rounded-xl overflow-hidden">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
+                                <tr>
+                                    <th class="py-2.5 px-3">Invoice No</th>
+                                    <th class="py-2.5 px-3">Date & Time</th>
+                                    <th class="py-2.5 px-3 text-right">Net Sales (BDT)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="modal-invoices-body" class="divide-y divide-slate-100">
+                                <!-- Invoices injected here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-end">
+                <button type="button" onclick="closeHistoryModal()" class="px-4 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl transition">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== JAVASCRIPT CONTROLLER ===== -->
+    <script>
+        // State management
+        let currentStatusFilter = 'all';
+        let currentSortBy = 'days_overdue';
+        let currentSortOrder = 'desc';
+        let currentPage = 1;
+        let currentPageSize = 25;
+        let searchQuery = '';
+        let searchDebounceTimer = null;
+
+        function esc(str) {
+            if (!str && str !== 0) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        // Sidebar toggle & collapse state
+        let isSidebarCollapsed = localStorage.getItem('sidebar_collapsed') === 'true';
+
+        function applySidebarState() {
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.getElementById('main-content');
+            const overlay = document.getElementById('sidebar-overlay');
+            if (!sidebar || !mainContent) return;
+
+            if (window.innerWidth >= 1024) {
+                if (overlay) overlay.classList.remove('active');
+                if (isSidebarCollapsed) {
+                    sidebar.classList.add('lg:-translate-x-full');
+                    sidebar.classList.remove('lg:translate-x-0');
+                    mainContent.classList.remove('lg:ml-64');
+                    mainContent.classList.add('lg:ml-0');
+                } else {
+                    sidebar.classList.remove('lg:-translate-x-full');
+                    sidebar.classList.add('lg:translate-x-0');
+                    mainContent.classList.add('lg:ml-64');
+                    mainContent.classList.remove('lg:ml-0');
+                }
+            } else {
+                mainContent.classList.remove('lg:ml-0');
+                mainContent.classList.add('lg:ml-64');
+                if (isSidebarCollapsed) {
+                    sidebar.classList.remove('translate-x-0');
+                    sidebar.classList.add('-translate-x-full');
+                    if (overlay) overlay.classList.remove('active');
+                } else {
+                    sidebar.classList.add('translate-x-0');
+                    sidebar.classList.remove('-translate-x-full');
+                    if (overlay) overlay.classList.add('active');
+                }
+            }
+        }
+
+        function toggleSidebar() {
+            isSidebarCollapsed = !isSidebarCollapsed;
+            localStorage.setItem('sidebar_collapsed', isSidebarCollapsed);
+            applySidebarState();
+        }
+        applySidebarState();
+        window.addEventListener('resize', applySidebarState);
+
+        // Load Sidebar Menus dynamically
+        async function loadSidebarMenus() {
+            try {
+                const res = await fetch('/api/menus');
+                const menus = await res.json();
+                renderSidebarNav(menus);
+            } catch (err) {
+                console.error('Failed to load sidebar menus:', err);
+            }
+        }
+
+        function renderSidebarNav(menus) {
+            const container = document.getElementById('sidebar-nav-container');
+            if (!container) return;
+            const sections = {};
+            (menus || []).forEach(m => {
+                const sec = m.section || 'General';
+                if (!sections[sec]) sections[sec] = [];
+                sections[sec].push(m);
+            });
+            let html = '';
+            const currentPath = window.location.pathname;
+
+            for (const [secTitle, items] of Object.entries(sections)) {
+                html += `<p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-3 mt-4 mb-2 first:mt-1">${esc(secTitle)}</p>`;
+                items.forEach((m, idx) => {
+                    const hasSubmenus = m.submenus && m.submenus.length > 0;
+                    const menuId = `menu-tree-${m.id || idx}`;
+                    const isAnyChildActive = hasSubmenus && m.submenus.some(s => s.url === currentPath || (s.url === '/dormant-clients' && currentPath.includes('/dormant-clients')));
+                    const isDirectActive = !hasSubmenus && (currentPath === m.url || (m.url === '/dormant-clients' && currentPath.includes('/dormant-clients')));
+
+                    if (hasSubmenus) {
+                        html += `
+                            <div class="menu-treeview-group">
+                                <button type="button" onclick="toggleSubmenu('${menuId}')" class="sidebar-nav-item w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium ${isAnyChildActive ? 'text-white bg-white/10' : 'text-slate-300 hover:text-white'} transition group">
+                                    <div class="flex items-center gap-3 overflow-hidden">
+                                        <div class="w-8 h-8 rounded-lg ${isAnyChildActive ? 'bg-blue-600 shadow-xs text-white' : 'bg-slate-800 text-slate-400 group-hover:text-white'} flex items-center justify-center shrink-0">
+                                            <i data-lucide="${esc(m.icon || 'folder')}" class="w-4 h-4"></i>
+                                        </div>
+                                        <div class="overflow-hidden text-left">
+                                            <span class="block truncate ${isAnyChildActive ? 'font-bold text-white' : 'font-medium'} text-xs">${esc(m.title)}</span>
+                                        </div>
+                                    </div>
+                                    <i id="${menuId}-arrow" data-lucide="chevron-right" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0 ${isAnyChildActive ? 'rotate-90 text-blue-400' : ''}"></i>
+                                </button>
+                                <div id="${menuId}-submenu" class="space-y-1 pl-4 pr-1 mt-1 border-l-2 border-slate-800 ml-4 ${isAnyChildActive ? '' : 'hidden'}">
+                                    ${m.submenus.map(sub => {
+                                        const isSubActive = currentPath === sub.url || (sub.url === '/dormant-clients' && currentPath.includes('/dormant-clients'));
+                                        const isSubDisabled = sub.is_disabled === 1;
+                                        if (isSubDisabled) {
+                                            return `<div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-500 cursor-not-allowed opacity-60"><i data-lucide="${esc(sub.icon || 'circle')}" class="w-2.5 h-2.5 text-slate-600 shrink-0"></i><span class="truncate">${esc(sub.title)}</span></div>`;
+                                        }
+                                        const subActiveStyle = isSubActive ? 'bg-blue-600 text-white font-bold shadow-xs' : 'text-slate-400 hover:text-white hover:bg-white/5';
+                                        return `<a href="${esc(sub.url)}" class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition ${subActiveStyle}">
+                                            <i data-lucide="${esc(sub.icon || 'circle')}" class="w-2.5 h-2.5 ${isSubActive ? 'text-white fill-white' : 'text-slate-400'} shrink-0"></i>
+                                            <span class="truncate">${esc(sub.title)}</span>
+                                        </a>`;
+                                    }).join('')}
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        const directActiveStyle = isDirectActive ? 'active text-white font-bold' : 'text-slate-300 hover:text-white';
+                        html += `
+                            <a href="${esc(m.url)}" class="sidebar-nav-item flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium ${directActiveStyle} transition group">
+                                <div class="flex items-center gap-3 overflow-hidden">
+                                    <div class="w-8 h-8 rounded-lg ${isDirectActive ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 group-hover:text-white'} flex items-center justify-center shrink-0">
+                                        <i data-lucide="${esc(m.icon || 'circle')}" class="w-4 h-4"></i>
+                                    </div>
+                                    <span class="truncate text-xs">${esc(m.title)}</span>
+                                </div>
+                            </a>
+                        `;
+                    }
+                });
+            }
+            container.innerHTML = html;
+            if (window.lucide) lucide.createIcons();
+        }
+
+        function toggleSubmenu(id) {
+            const sub = document.getElementById(`${id}-submenu`);
+            const arrow = document.getElementById(`${id}-arrow`);
+            if (!sub) return;
+            sub.classList.toggle('hidden');
+            if (arrow) arrow.classList.toggle('rotate-90');
+        }
+
+        // Fetch Main Report
+        async function fetchReport() {
+            const icon = document.getElementById('refresh-icon');
+            if (icon) icon.classList.add('animate-spin');
+
+            const tbody = document.getElementById('clients-table-body');
+            const emptyState = document.getElementById('empty-state');
+            const errorState = document.getElementById('error-state');
+
+            try {
+                const params = new URLSearchParams({
+                    status: currentStatusFilter,
+                    sort_by: currentSortBy,
+                    sort_order: currentSortOrder,
+                    page: currentPage,
+                    page_size: currentPageSize,
+                });
+                if (searchQuery) params.append('q', searchQuery);
+
+                const res = await fetch(`/api/dormant-clients?${params.toString()}`);
+                if (!res.ok) {
+                    throw new Error(`HTTP Error: ${res.status}`);
+                }
+                const data = await res.json();
+
+                renderSummary(data.summary);
+                renderClients(data.clients);
+                renderPagination(data.pagination);
+
+                if (emptyState) emptyState.classList.toggle('hidden', data.clients && data.clients.length > 0);
+                if (errorState) errorState.classList.add('hidden');
+            } catch (err) {
+                console.error('Failed to fetch dormant report:', err);
+                if (errorState) {
+                    errorState.classList.remove('hidden');
+                    document.getElementById('error-message-text').textContent = err.message || 'Server error';
+                }
+                if (tbody) tbody.innerHTML = '';
+            } finally {
+                if (icon) icon.classList.remove('animate-spin');
+                if (window.lucide) lucide.createIcons();
+            }
+        }
+
+        // Render KPI Summary
+        function renderSummary(summary) {
+            if (!summary) return;
+
+            document.getElementById('kpi-dormant-count').textContent = (summary.dormant_count || 0).toLocaleString();
+            document.getElementById('kpi-insufficient-count').textContent = (summary.insufficient_data_count || 0).toLocaleString();
+            document.getElementById('kpi-active-count').textContent = (summary.active_count || 0).toLocaleString();
+
+            const latestSales = summary.latest_sales_date ? summary.latest_sales_date.split(' ')[0] : 'N/A';
+            document.getElementById('kpi-latest-sales-date').textContent = latestSales;
+            document.getElementById('kpi-total-evaluated').textContent = `Total evaluated: ${(summary.total_customers || 0).toLocaleString()} clients`;
+
+            // Tab badge counts
+            document.getElementById('tab-count-all').textContent = (summary.total_customers || 0).toLocaleString();
+            document.getElementById('tab-count-dormant').textContent = (summary.dormant_count || 0).toLocaleString();
+            document.getElementById('tab-count-insufficient').textContent = (summary.insufficient_data_count || 0).toLocaleString();
+            document.getElementById('tab-count-active').textContent = (summary.active_count || 0).toLocaleString();
+
+            // Stale warning banner
+            const banner = document.getElementById('stale-warning-banner');
+            if (summary.is_sales_date_stale) {
+                banner.classList.remove('hidden');
+                document.getElementById('banner-stale-date').textContent = latestSales;
+                document.getElementById('banner-stale-days').textContent = summary.days_since_latest_sale || '?';
+            } else {
+                banner.classList.add('hidden');
+            }
+
+            const ts = summary.report_generated_at ? new Date(summary.report_generated_at).toLocaleTimeString() : new Date().toLocaleTimeString();
+            document.getElementById('report-timestamp').textContent = `Report generated: ${ts}`;
+        }
+
+        // Render Clients Table
+        function renderClients(clients) {
+            const tbody = document.getElementById('clients-table-body');
+            if (!tbody) return;
+
+            if (!clients || clients.length === 0) {
+                tbody.innerHTML = '';
+                return;
+            }
+
+            let html = '';
+            clients.forEach(c => {
+                // Status badge
+                let statusBadge = '';
+                if (c.status === 'dormant') {
+                    statusBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                        <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span> Dormant
+                    </span>`;
+                } else if (c.status === 'insufficient_data') {
+                    statusBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                        <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Insufficient Data
+                    </span>`;
+                } else {
+                    statusBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Active
+                    </span>`;
+                }
+
+                // Phone & Call Button
+                let phoneHtml = '<span class="text-slate-400 italic">No phone</span>';
+                if (c.phone) {
+                    if (c.has_valid_phone && c.dial_phone) {
+                        phoneHtml = `
+                            <div class="flex items-center gap-1.5 mt-0.5">
+                                <span class="font-mono text-slate-700 font-semibold">${esc(c.phone)}</span>
+                                <a href="tel:${esc(c.dial_phone)}" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[10px] border border-emerald-200 transition" title="Call Customer">
+                                    <i data-lucide="phone-call" class="w-3 h-3"></i> Call
+                                </a>
+                            </div>
+                        `;
+                    } else {
+                        phoneHtml = `<span class="font-mono text-slate-600">${esc(c.phone)}</span>`;
+                    }
+                }
+
+                // Inactivity & Delay metrics
+                let delayHtml = '';
+                if (c.status === 'dormant') {
+                    delayHtml = `
+                        <div class="font-bold text-slate-900">${c.days_since_last || 0} days ago</div>
+                        <div class="text-[10px] font-extrabold text-rose-600 mt-0.5">+${c.days_overdue || 0}d overdue</div>
+                    `;
+                } else if (c.status === 'active') {
+                    delayHtml = `
+                        <div class="font-medium text-slate-700">${c.days_since_last || 0} days ago</div>
+                        <div class="text-[10px] text-emerald-600 font-semibold mt-0.5">On schedule</div>
+                    `;
+                } else {
+                    delayHtml = `
+                        <div class="font-medium text-slate-500">${c.days_since_last !== null ? c.days_since_last + ' days ago' : '-'}</div>
+                        <div class="text-[10px] text-slate-400 italic mt-0.5">${c.distinct_purchase_days} purchase day(s)</div>
+                    `;
+                }
+
+                // Avg interval
+                let intervalHtml = '<span class="text-slate-400">-</span>';
+                if (c.avg_interval_days !== null && c.avg_interval_days !== undefined) {
+                    intervalHtml = `<span class="font-bold text-slate-800">${c.avg_interval_days}</span> <span class="text-slate-400 text-[10px]">days</span>`;
+                }
+
+                html += `
+                    <tr class="hover:bg-slate-50/80 transition">
+                        <td class="py-3 px-4">
+                            <div class="font-bold text-slate-900">${esc(c.customer_name)}</div>
+                            <div class="flex items-center gap-2 mt-0.5">
+                                <span class="text-[10px] font-mono text-slate-400 bg-slate-100 px-1 rounded">${esc(c.customer_id)}</span>
+                                ${phoneHtml}
+                            </div>
+                        </td>
+                        <td class="py-3 px-4">
+                            <div class="font-medium text-slate-800">${c.last_purchase_date || '<span class="text-slate-400 italic">Never</span>'}</div>
+                        </td>
+                        <td class="py-3 px-4 text-center">
+                            ${intervalHtml}
+                        </td>
+                        <td class="py-3 px-4 text-center">
+                            ${delayHtml}
+                        </td>
+                        <td class="py-3 px-4 text-center">
+                            ${statusBadge}
+                        </td>
+                        <td class="py-3 px-4 text-right">
+                            <button type="button" onclick="openCustomerHistory('${esc(c.customer_id)}')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs transition border border-blue-200/60 shadow-2xs">
+                                <i data-lucide="history" class="w-3.5 h-3.5"></i>
+                                <span>History</span>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            tbody.innerHTML = html;
+        }
+
+        // Render Pagination
+        function renderPagination(pagination) {
+            if (!pagination) return;
+            const total = pagination.total_items || 0;
+            const start = total === 0 ? 0 : (pagination.page - 1) * pagination.page_size + 1;
+            const end = Math.min(total, pagination.page * pagination.page_size);
+
+            document.getElementById('page-start').textContent = start;
+            document.getElementById('page-end').textContent = end;
+            document.getElementById('page-total').textContent = total.toLocaleString();
+
+            document.getElementById('current-page-num').textContent = pagination.page;
+            document.getElementById('prev-page-btn').disabled = !pagination.has_prev;
+            document.getElementById('next-page-btn').disabled = !pagination.has_next;
+        }
+
+        function changePage(delta) {
+            currentPage = Math.max(1, currentPage + delta);
+            fetchReport();
+        }
+
+        function handlePageSizeChange() {
+            currentPageSize = parseInt(document.getElementById('page-size-select').value, 10) || 25;
+            currentPage = 1;
+            fetchReport();
+        }
+
+        function handleSortChange() {
+            currentSortBy = document.getElementById('sort-by-select').value;
+            currentSortOrder = document.getElementById('sort-order-select').value;
+            currentPage = 1;
+            fetchReport();
+        }
+
+        function setStatusFilter(status) {
+            currentStatusFilter = status;
+            currentPage = 1;
+
+            ['all', 'dormant', 'insufficient_data', 'active'].forEach(s => {
+                const btn = document.getElementById(`tab-${s}`);
+                if (!btn) return;
+                if (s === status) {
+                    btn.className = "px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-slate-900 text-white shadow-xs";
+                } else {
+                    btn.className = "px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-slate-100 text-slate-600 hover:bg-slate-200";
+                }
+            });
+
+            fetchReport();
+        }
+
+        function handleSearchKeyup(e) {
+            clearTimeout(searchDebounceTimer);
+            searchDebounceTimer = setTimeout(() => {
+                searchQuery = document.getElementById('search-input').value.trim();
+                currentPage = 1;
+                fetchReport();
+            }, 300);
+        }
+
+        function clearFilters() {
+            document.getElementById('search-input').value = '';
+            searchQuery = '';
+            document.getElementById('sort-by-select').value = 'days_overdue';
+            document.getElementById('sort-order-select').value = 'desc';
+            currentSortBy = 'days_overdue';
+            currentSortOrder = 'desc';
+            setStatusFilter('all');
+        }
+
+        // Open Customer History Modal
+        async function openCustomerHistory(customerId) {
+            const modal = document.getElementById('history-modal');
+            modal.classList.remove('hidden');
+
+            document.getElementById('modal-customer-name').textContent = 'Loading...';
+            document.getElementById('modal-customer-id').textContent = customerId;
+            document.getElementById('modal-phone-box').innerHTML = '-';
+            document.getElementById('modal-address').textContent = '-';
+            document.getElementById('modal-status-badge').innerHTML = '-';
+            document.getElementById('modal-avg-interval').textContent = '-';
+            document.getElementById('modal-threshold').textContent = '-';
+            document.getElementById('modal-days-since').textContent = '-';
+            document.getElementById('modal-days-overdue').textContent = '-';
+            document.getElementById('modal-intervals-container').innerHTML = '<div class="py-2 text-slate-400 text-center">Loading intervals...</div>';
+            document.getElementById('modal-invoices-body').innerHTML = '<tr><td colspan="3" class="py-4 text-center text-slate-400">Loading invoices...</td></tr>';
+
+            try {
+                const res = await fetch(`/api/dormant-clients/${encodeURIComponent(customerId)}/history`);
+                if (!res.ok) throw new Error('Customer history not found');
+                const data = await res.json();
+
+                const c = data.customer || {};
+                document.getElementById('modal-customer-name').textContent = c.customer_name || 'Customer';
+                document.getElementById('modal-customer-id').textContent = c.customer_id || customerId;
+                document.getElementById('modal-address').textContent = c.address || 'Address not specified';
+
+                // Phone with Call
+                if (c.phone) {
+                    if (c.has_valid_phone && c.dial_phone) {
+                        document.getElementById('modal-phone-box').innerHTML = `
+                            <span>${esc(c.phone)}</span>
+                            <a href="tel:${esc(c.dial_phone)}" class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold hover:bg-emerald-200 transition">
+                                <i data-lucide="phone-call" class="w-2.5 h-2.5 inline"></i> Call
+                            </a>
+                        `;
+                    } else {
+                        document.getElementById('modal-phone-box').textContent = c.phone;
+                    }
+                } else {
+                    document.getElementById('modal-phone-box').textContent = 'No phone available';
+                }
+
+                // Status
+                let statusBadge = '';
+                if (data.status === 'dormant') {
+                    statusBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">Dormant</span>`;
+                } else if (data.status === 'insufficient_data') {
+                    statusBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">Insufficient Data</span>`;
+                } else {
+                    statusBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">Active</span>`;
+                }
+                document.getElementById('modal-status-badge').innerHTML = statusBadge;
+
+                // Cadence metrics
+                document.getElementById('modal-avg-interval').textContent = data.avg_interval_days !== null ? `${data.avg_interval_days}d` : 'N/A';
+                document.getElementById('modal-threshold').textContent = data.threshold_days !== null ? `${data.threshold_days}d` : 'N/A';
+                document.getElementById('modal-days-since').textContent = data.days_since_last !== null ? `${data.days_since_last}d` : 'N/A';
+                document.getElementById('modal-days-overdue').textContent = data.days_overdue !== null ? `+${data.days_overdue}d` : '0d';
+                document.getElementById('modal-distinct-days-text').textContent = `${data.distinct_purchase_days_count || 0} distinct purchase days evaluated`;
+
+                // Intervals visual timeline
+                const intervals = data.intervals || [];
+                const dates = data.calculation_dates || [];
+                if (dates.length >= 2 && intervals.length > 0) {
+                    let timelineHtml = '<div class="space-y-1.5"><div class="font-bold text-[10px] text-slate-500 uppercase tracking-wider">Purchase Interval Steps:</div>';
+                    intervals.forEach((step, idx) => {
+                        timelineHtml += `
+                            <div class="flex items-center justify-between bg-white px-3 py-1.5 rounded-lg border border-blue-100">
+                                <span class="font-mono text-slate-700">${step.from_date} &rarr; ${step.to_date}</span>
+                                <span class="font-bold text-blue-700">${step.days} day(s) interval</span>
+                            </div>
+                        `;
+                    });
+                    timelineHtml += '</div>';
+                    document.getElementById('modal-intervals-container').innerHTML = timelineHtml;
+                } else {
+                    document.getElementById('modal-intervals-container').innerHTML = `
+                        <div class="text-slate-500 italic py-1">
+                            Fewer than 3 distinct purchase days recorded; average cadence cannot be calculated. (Total purchase days: ${data.distinct_purchase_days_count || 0})
+                        </div>
+                    `;
+                }
+
+                // Invoices Table
+                const invoices = data.invoices || [];
+                if (invoices.length > 0) {
+                    let invHtml = '';
+                    invoices.forEach(inv => {
+                        invHtml += `
+                            <tr class="hover:bg-slate-50">
+                                <td class="py-2 px-3 font-mono text-slate-800 font-semibold">${esc(inv.sales_id)}</td>
+                                <td class="py-2 px-3 text-slate-600">${esc(inv.sales_date)}</td>
+                                <td class="py-2 px-3 text-right font-mono font-bold text-slate-900">&#2547;${(inv.net_sales || 0).toLocaleString()}</td>
+                            </tr>
+                        `;
+                    });
+                    document.getElementById('modal-invoices-body').innerHTML = invHtml;
+                } else {
+                    document.getElementById('modal-invoices-body').innerHTML = '<tr><td colspan="3" class="py-4 text-center text-slate-400">No invoices recorded</td></tr>';
+                }
+
+            } catch (err) {
+                console.error('Failed to load customer history:', err);
+                document.getElementById('modal-customer-name').textContent = 'Error Loading History';
+                document.getElementById('modal-invoices-body').innerHTML = `<tr><td colspan="3" class="py-4 text-center text-rose-500">${esc(err.message)}</td></tr>`;
+            } finally {
+                if (window.lucide) lucide.createIcons();
+            }
+        }
+
+        function closeHistoryModal() {
+            document.getElementById('history-modal').classList.add('hidden');
+        }
+
+        // Close modal on Escape
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeHistoryModal();
+            }
+        });
+
+        // Initialize on page load
+        loadSidebarMenus();
+        fetchReport();
+    </script>
+    <script src="/static/ai_assistant.js"></script>
+</body>
+</html>

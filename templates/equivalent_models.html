@@ -1,0 +1,1363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Equivalent Models — Printer Analytics</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .sidebar-scroll::-webkit-scrollbar { width: 4px; }
+        .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+        .sidebar-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+        .sidebar-nav-item { transition: all 0.15s ease; }
+        .sidebar-nav-item:hover { background: rgba(255,255,255,0.08); }
+        .sidebar-nav-item.active { background: rgba(59, 130, 246, 0.25); border-right: 3px solid #3b82f6; }
+        @media (max-width: 1023px) {
+            .sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 40; display: none; }
+            .sidebar-overlay.active { display: block; }
+        }
+        .modal-scroll::-webkit-scrollbar { width: 6px; }
+        .modal-scroll::-webkit-scrollbar-track { background: #f1f5f9; }
+        .modal-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .summary-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+        .summary-card:hover { transform: translateY(-1px); box-shadow: 0 10px 20px -12px rgba(15, 23, 42, 0.25); }
+        .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .toast-in { animation: toast-in 0.2s ease-out; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex">
+
+    <div id="sidebar-overlay" class="sidebar-overlay lg:hidden" onclick="toggleSidebar()"></div>
+
+    <aside id="sidebar" class="fixed top-0 left-0 z-50 h-screen w-64 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-white flex flex-col transition-all duration-300 ease-in-out -translate-x-full lg:translate-x-0 shadow-2xl">
+        <div class="h-16 flex items-center gap-3 px-5 border-b border-white/10 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20 text-white font-bold">
+                <i data-lucide="printer" class="w-5 h-5"></i>
+            </div>
+            <div>
+                <h1 class="text-sm font-bold tracking-tight text-white leading-none">Printer Analytics</h1>
+                <p class="text-[10px] text-slate-400 font-medium mt-0.5">Fleet Ops &amp; Intelligence</p>
+            </div>
+        </div>
+        <nav class="flex-1 overflow-y-auto sidebar-scroll px-3 py-4 space-y-1" id="sidebar-nav-container">
+            <div class="px-3 py-4 text-xs text-slate-400 flex items-center gap-2">
+                <div class="w-4 h-4 border-2 border-slate-500 border-t-blue-500 rounded-full animate-spin"></div>
+                <span>Loading menus...</span>
+            </div>
+        </nav>
+        <div class="p-3 border-t border-white/10 shrink-0 bg-slate-950/40">
+            <div class="flex items-center justify-between px-2 py-1.5 text-xs text-slate-400">
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span class="font-medium text-slate-300">Database Live</span>
+                </div>
+                <span class="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-white/10 text-slate-300">
+                    {{ user.role if user and user.role else 'Admin' }}
+                </span>
+            </div>
+            <a href="/logout" class="mt-2 w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/10 transition">
+                <i data-lucide="log-out" class="w-4 h-4"></i>
+                <span>Sign Out</span>
+            </a>
+        </div>
+    </aside>
+
+    <div id="main-content" class="transition-all duration-300 ease-in-out lg:ml-64 flex-1 flex flex-col min-h-screen">
+        <header class="sticky top-0 z-30 h-16 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-4 sm:px-6 flex items-center justify-between shadow-sm">
+            <div class="flex items-center gap-3 min-w-0">
+                <button type="button" onclick="toggleSidebar()" class="p-2 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 transition flex items-center justify-center" aria-label="Toggle navigation menu">
+                    <i data-lucide="menu" class="w-5 h-5"></i>
+                </button>
+                <div class="flex items-center gap-2 text-xs font-medium text-slate-500 min-w-0">
+                    <a href="/menus/dashboard" class="hover:text-blue-600 transition">Dashboard</a>
+                    <i data-lucide="chevron-right" class="w-3.5 h-3.5 shrink-0"></i>
+                    <span class="hidden sm:inline">Product Intelligence</span>
+                    <i data-lucide="chevron-right" class="w-3.5 h-3.5 shrink-0 hidden sm:inline"></i>
+                    <span class="text-slate-800 font-bold truncate">Equivalent Models</span>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <button type="button" onclick="refreshCurrentView()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 border border-slate-200 hover:bg-slate-100 transition" aria-label="Refresh equivalent models">
+                    <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                    <span class="hidden sm:inline">Refresh</span>
+                </button>
+            </div>
+        </header>
+
+        <main class="flex-1 px-4 sm:px-6 py-6 max-w-7xl mx-auto w-full">
+            <div class="mb-5">
+                <div class="flex items-start gap-3 mb-1">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/20 shrink-0">
+                        <i data-lucide="repeat" class="w-5 h-5 text-white"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-800">Equivalent Models</h2>
+                        <p class="text-xs text-slate-500 mt-0.5 max-w-3xl">
+                            Record and review directional replacement options when a product is unavailable. Relationships are explicit Admin entries, never inferred from names or categories.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 mb-3 flex items-start gap-3">
+                <i data-lucide="shield-alert" class="w-4 h-4 text-amber-700 mt-0.5 shrink-0"></i>
+                <p id="disclaimer-text" class="text-[11px] leading-relaxed text-amber-900">
+                    Recommendations are directional and only appear after an Admin records them. Similar names or shared categories are not treated as equivalence.
+                </p>
+            </div>
+            <div class="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 mb-5 flex items-start gap-3">
+                <i data-lucide="printer-check" class="w-4 h-4 text-sky-700 mt-0.5 shrink-0"></i>
+                <p id="compatibility-text" class="text-[11px] leading-relaxed text-sky-900">
+                    An equivalent model does not automatically establish printer and ink compatibility. Use the Ink Dependency module for verified compatibility.
+                </p>
+            </div>
+
+            <section class="bg-white rounded-xl border border-slate-200 shadow-sm mb-5" aria-labelledby="source-heading">
+                <div class="px-4 sm:px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                    <div class="flex items-center gap-2.5">
+                        <span class="w-6 h-6 rounded-full bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center">1</span>
+                        <div>
+                            <h3 id="source-heading" class="text-sm font-bold text-slate-800">Choose a source product</h3>
+                            <p class="text-[10px] text-slate-500">Search by product name, ID, description, category or brand.</p>
+                        </div>
+                    </div>
+                    <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">
+                        <i data-lucide="info" class="w-3 h-3"></i>
+                        Model is Unknown when not stored
+                    </span>
+                </div>
+                <div class="p-4 sm:p-5">
+                    <div id="source-search-panel">
+                        <div class="flex flex-wrap gap-3 items-end">
+                            <div class="flex-1 min-w-[230px]">
+                                <label for="source-search" class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Search products</label>
+                                <div class="relative">
+                                    <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                                    <input id="source-search" type="text" autocomplete="off" placeholder="Product name, ID, description, category or brand..."
+                                           class="w-full pl-10 pr-3 py-2.5 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
+                                </div>
+                            </div>
+                            <div class="w-full sm:w-52">
+                                <label for="source-category" class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Category</label>
+                                <select id="source-category" class="w-full px-3 py-2.5 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition">
+                                    <option value="">All categories</option>
+                                </select>
+                            </div>
+                        </div>
+                        <p class="text-[10px] text-slate-500 mt-2">
+                            The catalog has no dedicated model column, so the model field is shown as Unknown rather than guessed.
+                        </p>
+                        <div id="source-results" class="mt-3 space-y-2" aria-live="polite">
+                            <div class="rounded-lg border border-dashed border-slate-200 px-4 py-5 text-center text-xs text-slate-500">
+                                Type at least one character to search the product catalog.
+                            </div>
+                        </div>
+                        <div id="source-pagination" class="mt-3 hidden"></div>
+                    </div>
+
+                    <div id="selected-source-card" class="hidden">
+                        <div class="rounded-xl border border-blue-200 bg-blue-50/60 p-4">
+                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                <div class="min-w-0">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <span class="text-[10px] font-bold uppercase tracking-wide text-blue-700">Selected source</span>
+                                        <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 border border-blue-100" id="selected-source-id"></span>
+                                    </div>
+                                    <h4 id="selected-source-name" class="text-base font-bold text-slate-800 break-words"></h4>
+                                    <p id="selected-source-meta" class="text-[11px] text-slate-600 mt-1"></p>
+                                    <div id="selected-source-flags" class="flex flex-wrap gap-1.5 mt-2"></div>
+                                </div>
+                                <button type="button" onclick="resetSource()" class="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 transition">
+                                    <i data-lucide="search" class="w-3.5 h-3.5"></i>
+                                    Change source
+                                </button>
+                            </div>
+                            <div id="selected-source-missing" class="hidden mt-3 rounded-lg bg-white/70 border border-amber-200 px-3 py-2 text-[11px] text-amber-800"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="alternatives-section" class="hidden" aria-labelledby="alternatives-heading">
+                <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+                    <div class="flex items-center gap-2.5">
+                        <span class="w-6 h-6 rounded-full bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center">2</span>
+                        <div>
+                            <h3 id="alternatives-heading" class="text-sm font-bold text-slate-800">Alternatives for this source</h3>
+                            <p class="text-[10px] text-slate-500">Only relationships recorded for this direction are shown.</p>
+                        </div>
+                    </div>
+                    <button type="button" id="add-relationship-btn" onclick="openAddModal()" class="hidden items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-700 transition">
+                        <i data-lucide="plus" class="w-4 h-4"></i>
+                        Add equivalent model
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
+                    <div class="summary-card bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Active</span>
+                            <i data-lucide="link-2" class="w-4 h-4 text-slate-400"></i>
+                        </div>
+                        <p id="summary-active" class="text-2xl font-extrabold text-slate-800">-</p>
+                        <p class="text-[10px] text-slate-500">Verified + needs review</p>
+                    </div>
+                    <div class="summary-card bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-[10px] font-bold text-emerald-700 uppercase tracking-wide">Admin Verified</span>
+                            <i data-lucide="badge-check" class="w-4 h-4 text-emerald-500"></i>
+                        </div>
+                        <p id="summary-verified" class="text-2xl font-extrabold text-slate-800">-</p>
+                        <p class="text-[10px] text-slate-500">Explicit Admin decision</p>
+                    </div>
+                    <div class="summary-card bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-[10px] font-bold text-amber-700 uppercase tracking-wide">Needs Review</span>
+                            <i data-lucide="clock-3" class="w-4 h-4 text-amber-500"></i>
+                        </div>
+                        <p id="summary-needs-review" class="text-2xl font-extrabold text-slate-800">-</p>
+                        <p class="text-[10px] text-slate-500">Recorded, not yet verified</p>
+                    </div>
+                    <div class="summary-card bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Inactive</span>
+                            <i data-lucide="archive" class="w-4 h-4 text-slate-400"></i>
+                        </div>
+                        <p id="summary-inactive" class="text-2xl font-extrabold text-slate-800">-</p>
+                        <p class="text-[10px] text-slate-500">Hidden from active recommendations</p>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm mb-4">
+                    <div class="flex flex-wrap gap-3 items-end">
+                        <div class="flex-1 min-w-[180px]">
+                            <label for="alt-search" class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Search alternatives</label>
+                            <div class="relative">
+                                <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                                <input id="alt-search" type="text" placeholder="Product, brand, reason or source..."
+                                       class="w-full pl-10 pr-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition" />
+                            </div>
+                        </div>
+                        <div class="w-full sm:w-40">
+                            <label for="alt-status" class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Verification</label>
+                            <select id="alt-status" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition">
+                                <option value="active">All active</option>
+                                <option value="verified">Admin Verified</option>
+                                <option value="needs_review">Needs Review</option>
+                                <option value="inactive">Inactive</option>
+                                <option value="all">All statuses</option>
+                            </select>
+                        </div>
+                        <div class="w-full sm:w-44">
+                            <label for="alt-category" class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Alternative category</label>
+                            <select id="alt-category" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition">
+                                <option value="">All categories</option>
+                            </select>
+                        </div>
+                        <div class="w-full sm:w-40">
+                            <label for="alt-stock" class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Stock</label>
+                            <select id="alt-stock" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition">
+                                <option value="all">All stock states</option>
+                                <option value="in_stock">In stock</option>
+                                <option value="out_of_stock">Out of stock</option>
+                                <option value="unknown">Unknown</option>
+                            </select>
+                        </div>
+                        <div class="w-full sm:w-44">
+                            <label for="alt-sort" class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Sort</label>
+                            <select id="alt-sort" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition">
+                                <option value="last_updated:desc">Last updated: newest</option>
+                                <option value="last_updated:asc">Last updated: oldest</option>
+                                <option value="product_name:asc">Product name: A-Z</option>
+                                <option value="price:desc">Price: high to low</option>
+                                <option value="stock:desc">Stock: high to low</option>
+                                <option value="status:asc">Verification status</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div id="alternatives-loading" class="hidden px-5 py-10 text-center">
+                        <div class="inline-flex items-center gap-2 text-xs text-slate-500">
+                            <span class="w-4 h-4 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin"></span>
+                            Loading alternatives...
+                        </div>
+                    </div>
+                    <div id="alternatives-error" class="hidden px-5 py-8"></div>
+                    <div id="alternatives-empty" class="hidden px-5 py-10 text-center">
+                        <div class="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+                            <i data-lucide="unlink" class="w-5 h-5 text-slate-400"></i>
+                        </div>
+                        <h4 id="empty-title" class="text-sm font-bold text-slate-700">No alternatives recorded</h4>
+                        <p id="empty-message" class="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                            No relationship matches the current filters. Adjust the filters or add a reviewed alternative.
+                        </p>
+                    </div>
+                    <div id="alternatives-table-wrap" class="hidden overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead class="bg-slate-50 border-b border-slate-200">
+                                <tr class="text-[10px] uppercase tracking-wide text-slate-500">
+                                    <th class="px-4 py-3 font-bold">Alternative product</th>
+                                    <th class="px-4 py-3 font-bold">Catalog facts</th>
+                                    <th class="px-4 py-3 font-bold">Evidence</th>
+                                    <th class="px-4 py-3 font-bold">Verification</th>
+                                    <th class="px-4 py-3 font-bold text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="alternatives-tbody" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                    <div id="alternatives-pagination" class="hidden px-4 py-3 border-t border-slate-100"></div>
+                </div>
+
+                <div class="mt-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
+                    <div class="flex items-start gap-2">
+                        <i data-lucide="calculator" class="w-4 h-4 text-slate-400 mt-0.5 shrink-0"></i>
+                        <p id="calculation-text" class="text-[10px] leading-relaxed text-slate-500">
+                            Price is product.SALES_PRICE; a missing or non-positive value is Unknown. Stock comes from the serial or non-serial stock table; products without stock rows are Unknown, not zero.
+                        </p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div id="detail-modal" class="modal-root fixed inset-0 z-[70] hidden">
+        <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onclick="closeModal('detail-modal')"></div>
+        <div class="relative flex min-h-full items-center justify-center p-4">
+            <div class="w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-2xl bg-white shadow-2xl flex flex-col">
+                <div class="flex items-start justify-between gap-4 px-5 py-4 border-b border-slate-100">
+                    <div>
+                        <p class="text-[10px] font-bold uppercase tracking-wide text-blue-600">Relationship detail</p>
+                        <h3 id="detail-title" class="text-base font-bold text-slate-800">Alternative comparison</h3>
+                    </div>
+                    <button type="button" onclick="closeModal('detail-modal')" class="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close dialog">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
+                </div>
+                <div id="detail-body" class="modal-scroll flex-1 overflow-y-auto p-5"></div>
+                <div class="px-5 py-3 border-t border-slate-100 bg-slate-50 flex justify-end">
+                    <button type="button" onclick="closeModal('detail-modal')" class="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="add-modal" class="modal-root fixed inset-0 z-[70] hidden">
+        <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onclick="closeModal('add-modal')"></div>
+        <div class="relative flex min-h-full items-center justify-center p-4">
+            <form id="add-form" onsubmit="submitAdd(event)" class="w-full max-w-2xl max-h-[92vh] overflow-hidden rounded-2xl bg-white shadow-2xl flex flex-col">
+                <div class="flex items-start justify-between gap-4 px-5 py-4 border-b border-slate-100">
+                    <div>
+                        <p class="text-[10px] font-bold uppercase tracking-wide text-blue-600">Admin action</p>
+                        <h3 class="text-base font-bold text-slate-800">Add an equivalent model</h3>
+                        <p class="text-[11px] text-slate-500 mt-0.5">New relationships start as Needs Review. Verification is separate.</p>
+                    </div>
+                    <button type="button" onclick="closeModal('add-modal')" class="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close dialog">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
+                </div>
+                <div class="modal-scroll flex-1 overflow-y-auto p-5 space-y-4">
+                    <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                        <p class="text-[10px] font-bold uppercase text-slate-500 mb-0.5">Source</p>
+                        <p id="add-source-name" class="text-xs font-semibold text-slate-800"></p>
+                    </div>
+                    <div>
+                        <label for="add-alt-search" class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Find alternative product</label>
+                        <div class="relative">
+                            <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                            <input id="add-alt-search" type="text" autocomplete="off" placeholder="Search by name, ID, description, category or brand..."
+                                   class="w-full pl-10 pr-3 py-2.5 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                        </div>
+                        <div id="add-alt-results" class="mt-2 max-h-48 overflow-y-auto modal-scroll space-y-2">
+                            <p class="rounded-lg border border-dashed border-slate-200 px-3 py-4 text-center text-[11px] text-slate-500">Type to search alternatives.</p>
+                        </div>
+                    </div>
+                    <div id="add-alt-selected" class="hidden rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <p class="text-[10px] font-bold uppercase text-emerald-700">Selected alternative</p>
+                                <p id="add-alt-name" class="text-xs font-semibold text-slate-800"></p>
+                                <p id="add-alt-meta" class="text-[10px] text-slate-600"></p>
+                            </div>
+                            <button type="button" onclick="clearAddAlternative()" class="text-[10px] font-bold text-emerald-700 hover:text-emerald-900">Clear</button>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="add-reason" class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Why is it suitable? <span class="text-rose-600">Required</span></label>
+                        <textarea id="add-reason" rows="3" maxlength="2000" required placeholder="Record the operational reason, evidence or Admin judgement..."
+                                  class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"></textarea>
+                    </div>
+                    <div>
+                        <label for="add-source" class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Evidence source</label>
+                        <input id="add-source" type="text" maxlength="200" value="Admin entry" placeholder="Supplier note, manual review, catalogue..."
+                               class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                    </div>
+                    <div id="add-error" class="hidden rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-700"></div>
+                </div>
+                <div class="px-5 py-3 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-2">
+                    <button type="button" onclick="closeModal('add-modal')" class="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100">Cancel</button>
+                    <button type="submit" id="add-submit" class="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50">
+                        <i data-lucide="save" class="w-3.5 h-3.5"></i>
+                        Save for review
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="edit-modal" class="modal-root fixed inset-0 z-[70] hidden">
+        <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onclick="closeModal('edit-modal')"></div>
+        <div class="relative flex min-h-full items-center justify-center p-4">
+            <form id="edit-form" onsubmit="submitEdit(event)" class="w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden">
+                <div class="flex items-start justify-between gap-4 px-5 py-4 border-b border-slate-100">
+                    <div>
+                        <p class="text-[10px] font-bold uppercase tracking-wide text-blue-600">Admin action</p>
+                        <h3 class="text-base font-bold text-slate-800">Edit evidence</h3>
+                    </div>
+                    <button type="button" onclick="closeModal('edit-modal')" class="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close dialog">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
+                </div>
+                <div class="p-5 space-y-4">
+                    <p id="edit-context" class="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-[11px] text-slate-600"></p>
+                    <div>
+                        <label for="edit-reason" class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Reason <span class="text-rose-600">Required</span></label>
+                        <textarea id="edit-reason" rows="4" maxlength="2000" required class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"></textarea>
+                    </div>
+                    <div>
+                        <label for="edit-source" class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Evidence source</label>
+                        <input id="edit-source" type="text" maxlength="200" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                    </div>
+                    <div id="edit-error" class="hidden rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-700"></div>
+                </div>
+                <div class="px-5 py-3 border-t border-slate-100 bg-slate-50 flex justify-end gap-2">
+                    <button type="button" onclick="closeModal('edit-modal')" class="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100">Cancel</button>
+                    <button type="submit" id="edit-submit" class="rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50">Save changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="verify-modal" class="modal-root fixed inset-0 z-[70] hidden">
+        <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onclick="closeModal('verify-modal')"></div>
+        <div class="relative flex min-h-full items-center justify-center p-4">
+            <form id="verify-form" onsubmit="submitVerify(event)" class="w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden">
+                <div class="flex items-start justify-between gap-4 px-5 py-4 border-b border-slate-100">
+                    <div>
+                        <p class="text-[10px] font-bold uppercase tracking-wide text-emerald-600">Admin action</p>
+                        <h3 class="text-base font-bold text-slate-800">Verify this relationship</h3>
+                    </div>
+                    <button type="button" onclick="closeModal('verify-modal')" class="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close dialog">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
+                </div>
+                <div class="p-5 space-y-4">
+                    <p id="verify-context" class="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-[11px] text-slate-600"></p>
+                    <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">
+                        Verification records your username and the current time. It does not establish printer or ink compatibility.
+                    </div>
+                    <div>
+                        <label for="verify-reason" class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Reason <span class="text-rose-600">Required</span></label>
+                        <textarea id="verify-reason" rows="4" maxlength="2000" required class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"></textarea>
+                    </div>
+                    <div>
+                        <label for="verify-source" class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Evidence source</label>
+                        <input id="verify-source" type="text" maxlength="200" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none" />
+                    </div>
+                    <div id="verify-error" class="hidden rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-700"></div>
+                </div>
+                <div class="px-5 py-3 border-t border-slate-100 bg-slate-50 flex justify-end gap-2">
+                    <button type="button" onclick="closeModal('verify-modal')" class="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100">Cancel</button>
+                    <button type="submit" id="verify-submit" class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50">
+                        <i data-lucide="badge-check" class="w-3.5 h-3.5"></i>
+                        Verify relationship
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="deactivate-modal" class="modal-root fixed inset-0 z-[70] hidden">
+        <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onclick="closeModal('deactivate-modal')"></div>
+        <div class="relative flex min-h-full items-center justify-center p-4">
+            <div class="w-full max-w-md rounded-2xl bg-white shadow-2xl overflow-hidden">
+                <div class="px-5 py-4 border-b border-slate-100">
+                    <p class="text-[10px] font-bold uppercase tracking-wide text-rose-600">Admin action</p>
+                    <h3 class="text-base font-bold text-slate-800">Deactivate relationship</h3>
+                </div>
+                <div class="p-5">
+                    <p id="deactivate-context" class="text-xs text-slate-600 leading-relaxed"></p>
+                    <p class="mt-2 text-[11px] text-slate-500">The evidence is retained. Re-adding the same direction will reactivate it for review.</p>
+                    <div id="deactivate-error" class="hidden mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-700"></div>
+                </div>
+                <div class="px-5 py-3 border-t border-slate-100 bg-slate-50 flex justify-end gap-2">
+                    <button type="button" onclick="closeModal('deactivate-modal')" class="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100">Cancel</button>
+                    <button type="button" id="deactivate-submit" onclick="submitDeactivate()" class="rounded-lg bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700 disabled:opacity-50">Deactivate</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container" class="fixed bottom-4 right-4 z-[90] space-y-2 w-80 max-w-[calc(100vw-2rem)]" aria-live="polite"></div>
+
+    <script>
+        const state = {
+            isAdmin: false,
+            metadata: null,
+            source: null,
+            sourcePage: 1,
+            sourceQuery: '',
+            alternativesPage: 1,
+            addAlternative: null,
+            editRelationship: null,
+            verifyRelationship: null,
+            deactivateRelationship: null
+        };
+
+        function esc(value) {
+            return String(value === null || value === undefined ? '' : value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function debounce(fn, wait) {
+            let timer;
+            return function (...args) {
+                clearTimeout(timer);
+                timer = setTimeout(() => fn.apply(this, args), wait);
+            };
+        }
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const palette = type === 'error'
+                ? 'border-rose-200 bg-rose-50 text-rose-800'
+                : 'border-emerald-200 bg-emerald-50 text-emerald-800';
+            const icon = type === 'error' ? 'alert-circle' : 'check-circle-2';
+            const toast = document.createElement('div');
+            toast.className = `toast-in rounded-xl border ${palette} px-4 py-3 shadow-lg flex items-start gap-2`;
+            toast.innerHTML = `<i data-lucide="${icon}" class="w-4 h-4 mt-0.5 shrink-0"></i><p class="text-xs font-medium leading-relaxed">${esc(message)}</p>`;
+            container.appendChild(toast);
+            if (window.lucide) lucide.createIcons();
+            setTimeout(() => toast.remove(), 4500);
+        }
+
+        async function apiFetch(url, options = {}) {
+            const response = await fetch(url, options);
+            if (response.status === 401) {
+                window.location.href = '/login';
+                throw new Error('Authentication required.');
+            }
+            let body = {};
+            try {
+                body = await response.json();
+            } catch (err) {
+                body = {};
+            }
+            if (!response.ok) {
+                const message = body.message || body.detail || `Request failed (${response.status}).`;
+                const error = new Error(typeof message === 'string' ? message : 'Request failed.');
+                error.status = response.status;
+                throw error;
+            }
+            return body;
+        }
+
+        let isSidebarCollapsed = localStorage.getItem('sidebar_collapsed') === 'true';
+
+        function applySidebarState() {
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.getElementById('main-content');
+            const overlay = document.getElementById('sidebar-overlay');
+            if (!sidebar || !mainContent) return;
+
+            if (window.innerWidth >= 1024) {
+                if (overlay) overlay.classList.remove('active');
+                if (isSidebarCollapsed) {
+                    sidebar.classList.add('lg:-translate-x-full');
+                    sidebar.classList.remove('lg:translate-x-0');
+                    mainContent.classList.remove('lg:ml-64');
+                    mainContent.classList.add('lg:ml-0');
+                } else {
+                    sidebar.classList.remove('lg:-translate-x-full');
+                    sidebar.classList.add('lg:translate-x-0');
+                    mainContent.classList.add('lg:ml-64');
+                    mainContent.classList.remove('lg:ml-0');
+                }
+            } else {
+                mainContent.classList.remove('lg:ml-0');
+                mainContent.classList.add('lg:ml-64');
+                if (isSidebarCollapsed) {
+                    sidebar.classList.remove('translate-x-0');
+                    sidebar.classList.add('-translate-x-full');
+                    if (overlay) overlay.classList.remove('active');
+                } else {
+                    sidebar.classList.add('translate-x-0');
+                    sidebar.classList.remove('-translate-x-full');
+                    if (overlay) overlay.classList.add('active');
+                }
+            }
+        }
+
+        function toggleSidebar() {
+            isSidebarCollapsed = !isSidebarCollapsed;
+            localStorage.setItem('sidebar_collapsed', isSidebarCollapsed);
+            applySidebarState();
+        }
+
+        async function loadSidebarMenus() {
+            try {
+                const res = await fetch('/api/menus');
+                const menus = await res.json();
+                renderSidebarNav(menus);
+            } catch (err) {
+                console.error('Failed to load sidebar menus:', err);
+            }
+        }
+
+        function renderSidebarNav(menus) {
+            const container = document.getElementById('sidebar-nav-container');
+            if (!container) return;
+            const sections = {};
+            (menus || []).forEach(m => {
+                const sec = m.section || 'General';
+                if (!sections[sec]) sections[sec] = [];
+                sections[sec].push(m);
+            });
+            let html = '';
+            const currentPath = window.location.pathname;
+
+            for (const [secTitle, items] of Object.entries(sections)) {
+                html += `<p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-3 mt-4 mb-2 first:mt-1">${esc(secTitle)}</p>`;
+                items.forEach((m, idx) => {
+                    const hasSubmenus = m.submenus && m.submenus.length > 0;
+                    const menuId = `menu-tree-${m.id || idx}`;
+                    const isAnyChildActive = hasSubmenus && m.submenus.some(s => currentPath === s.url || currentPath.startsWith(s.url + '/'));
+                    const isDirectActive = !hasSubmenus && currentPath === m.url;
+
+                    if (hasSubmenus) {
+                        html += `
+                            <div class="menu-treeview-group">
+                                <button type="button" onclick="toggleSubmenu('${menuId}')" class="sidebar-nav-item w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium ${isAnyChildActive ? 'text-white bg-white/10' : 'text-slate-300 hover:text-white'} transition group">
+                                    <div class="flex items-center gap-3 overflow-hidden">
+                                        <div class="w-8 h-8 rounded-lg ${isAnyChildActive ? 'bg-blue-600 shadow-sm text-white' : 'bg-slate-800 text-slate-400 group-hover:text-white'} flex items-center justify-center shrink-0">
+                                            <i data-lucide="${esc(m.icon || 'folder')}" class="w-4 h-4"></i>
+                                        </div>
+                                        <div class="overflow-hidden text-left">
+                                            <span class="block truncate ${isAnyChildActive ? 'font-bold text-white' : 'font-medium'} text-xs">${esc(m.title)}</span>
+                                        </div>
+                                    </div>
+                                    <i id="${menuId}-arrow" data-lucide="chevron-right" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0 ${isAnyChildActive ? 'rotate-90 text-blue-400' : ''}"></i>
+                                </button>
+                                <div id="${menuId}-submenu" class="space-y-1 pl-4 pr-1 mt-1 border-l-2 border-slate-800 ml-4 ${isAnyChildActive ? '' : 'hidden'}">
+                                    ${m.submenus.map(sub => {
+                                        const isSubActive = currentPath === sub.url;
+                                        const isSubDisabled = sub.is_disabled === 1;
+                                        if (isSubDisabled) {
+                                            return `<div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-500 cursor-not-allowed opacity-60"><i data-lucide="${esc(sub.icon || 'circle')}" class="w-2.5 h-2.5 text-slate-600 shrink-0"></i><span class="truncate">${esc(sub.title)}</span></div>`;
+                                        }
+                                        const subActiveStyle = isSubActive ? 'bg-blue-600 text-white font-bold shadow-sm' : 'text-slate-400 hover:text-white hover:bg-white/5';
+                                        return `<a href="${esc(sub.url)}" class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition ${subActiveStyle}">
+                                            <i data-lucide="${esc(sub.icon || 'circle')}" class="w-2.5 h-2.5 ${isSubActive ? 'text-white fill-white' : 'text-slate-400'} shrink-0"></i>
+                                            <span class="truncate">${esc(sub.title)}</span>
+                                        </a>`;
+                                    }).join('')}
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        const directActiveStyle = isDirectActive ? 'active text-white font-bold' : 'text-slate-300 hover:text-white';
+                        html += `
+                            <a href="${esc(m.url)}" class="sidebar-nav-item flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium ${directActiveStyle} transition group">
+                                <div class="flex items-center gap-3 overflow-hidden">
+                                    <div class="w-8 h-8 rounded-lg ${isDirectActive ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 group-hover:text-white'} flex items-center justify-center shrink-0">
+                                        <i data-lucide="${esc(m.icon || 'circle')}" class="w-4 h-4"></i>
+                                    </div>
+                                    <span class="truncate text-xs">${esc(m.title)}</span>
+                                </div>
+                            </a>
+                        `;
+                    }
+                });
+            }
+            container.innerHTML = html;
+            if (window.lucide) lucide.createIcons();
+        }
+
+        function toggleSubmenu(id) {
+            const sub = document.getElementById(`${id}-submenu`);
+            const arrow = document.getElementById(`${id}-arrow`);
+            if (!sub) return;
+            sub.classList.toggle('hidden');
+            if (arrow) arrow.classList.toggle('rotate-90');
+        }
+
+        function stockBadge(product) {
+            if (!product) return '<span class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">Unknown</span>';
+            if (product.stock_status === 'in_stock') {
+                return `<span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">In stock: ${esc(product.stock_display)}</span>`;
+            }
+            if (product.stock_status === 'out_of_stock') {
+                return `<span class="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700">Out of stock: ${esc(product.stock_display)}</span>`;
+            }
+            return '<span class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">Stock unknown</span>';
+        }
+
+        function statusBadge(rel) {
+            if (rel.status === 'verified') {
+                return '<span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700"><i data-lucide="badge-check" class="w-3 h-3"></i>Admin Verified</span>';
+            }
+            if (rel.status === 'inactive') {
+                return '<span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600"><i data-lucide="archive" class="w-3 h-3"></i>Inactive</span>';
+            }
+            return '<span class="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700"><i data-lucide="clock-3" class="w-3 h-3"></i>Needs Review</span>';
+        }
+
+        function optionMarkup(categories, placeholder) {
+            return `<option value="">${esc(placeholder)}</option>` + (categories || []).map(c =>
+                `<option value="${esc(c.category_id)}">${esc(c.category_name)} (${esc(c.product_count)})</option>`
+            ).join('');
+        }
+
+        async function loadBootstrap() {
+            try {
+                const data = await apiFetch('/api/equivalent-models/bootstrap');
+                state.isAdmin = Boolean(data.user && data.user.is_admin);
+                state.metadata = data.metadata || {};
+                const categories = data.categories || [];
+                document.getElementById('source-category').innerHTML = optionMarkup(categories, 'All categories');
+                document.getElementById('alt-category').innerHTML = optionMarkup(categories, 'All categories');
+                if (state.metadata.disclaimer) document.getElementById('disclaimer-text').textContent = state.metadata.disclaimer;
+                if (state.metadata.compatibility_notice) document.getElementById('compatibility-text').textContent = state.metadata.compatibility_notice;
+                if (state.metadata.calculation_basis) document.getElementById('calculation-text').textContent = state.metadata.calculation_basis;
+                const addBtn = document.getElementById('add-relationship-btn');
+                addBtn.classList.toggle('hidden', !state.isAdmin);
+                addBtn.classList.toggle('inline-flex', state.isAdmin);
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        }
+
+        async function searchSources(page = 1) {
+            const q = document.getElementById('source-search').value.trim();
+            const category = document.getElementById('source-category').value;
+            state.sourceQuery = q;
+            state.sourcePage = page;
+            const results = document.getElementById('source-results');
+            const pagination = document.getElementById('source-pagination');
+
+            if (!q) {
+                results.innerHTML = '<div class="rounded-lg border border-dashed border-slate-200 px-4 py-5 text-center text-xs text-slate-500">Type at least one character to search the product catalog.</div>';
+                pagination.classList.add('hidden');
+                return;
+            }
+
+            results.innerHTML = '<div class="rounded-lg border border-slate-200 px-4 py-5 text-center text-xs text-slate-500"><span class="inline-block w-4 h-4 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin align-middle mr-2"></span>Searching products...</div>';
+
+            try {
+                const params = new URLSearchParams({ q, category_id: category, page, page_size: 8 });
+                const data = await apiFetch(`/api/equivalent-models/products?${params.toString()}`);
+                const products = data.products || [];
+                if (!products.length) {
+                    results.innerHTML = '<div class="rounded-lg border border-dashed border-slate-200 px-4 py-5 text-center text-xs text-slate-500">No product matches this search. Try a different name, ID or category.</div>';
+                    pagination.classList.add('hidden');
+                    return;
+                }
+                results.innerHTML = products.map(product => `
+                    <div class="rounded-lg border border-slate-200 px-3 py-2.5 hover:border-blue-300 hover:bg-blue-50/40 transition flex flex-wrap items-center justify-between gap-3">
+                        <div class="min-w-0 flex-1">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <p class="text-xs font-bold text-slate-800 break-words">${esc(product.product_name)}</p>
+                                <span class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">${esc(product.product_id)}</span>
+                            </div>
+                            <p class="text-[10px] text-slate-500 mt-0.5">${esc(product.category_name)} · ${esc(product.brand_name)} · Model: ${esc(product.model_display)}</p>
+                            <div class="flex flex-wrap gap-1.5 mt-1.5">
+                                <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">${esc(product.price_display)}</span>
+                                ${stockBadge(product)}
+                            </div>
+                        </div>
+                        <button type="button" onclick="selectSource('${esc(product.product_id)}')" class="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-[10px] font-bold text-white hover:bg-blue-700">
+                            Select
+                            <i data-lucide="arrow-right" class="w-3 h-3"></i>
+                        </button>
+                    </div>
+                `).join('');
+                if (data.total_pages > 1) {
+                    pagination.classList.remove('hidden');
+                    pagination.innerHTML = simplePagination(data.page, data.total_pages, 'searchSources');
+                } else {
+                    pagination.classList.add('hidden');
+                }
+                if (window.lucide) lucide.createIcons();
+            } catch (err) {
+                results.innerHTML = `<div class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-4 text-xs text-rose-700">${esc(err.message)}</div>`;
+                pagination.classList.add('hidden');
+            }
+        }
+
+        function simplePagination(page, totalPages, fnName) {
+            return `<div class="flex items-center justify-between gap-2">
+                <p class="text-[10px] text-slate-500">Page ${page} of ${totalPages}</p>
+                <div class="flex gap-1.5">
+                    <button type="button" onclick="${fnName}(${Math.max(1, page - 1)})" ${page <= 1 ? 'disabled' : ''} class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40">Previous</button>
+                    <button type="button" onclick="${fnName}(${Math.min(totalPages, page + 1)})" ${page >= totalPages ? 'disabled' : ''} class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40">Next</button>
+                </div>
+            </div>`;
+        }
+
+        function productFlags(product) {
+            const flags = [];
+            if (product.missing_fields && product.missing_fields.length) {
+                const labels = product.missing_fields.map(field => {
+                    if (field === 'price') return 'Price unknown';
+                    if (field === 'stock') return 'Stock unknown';
+                    if (field === 'description') return 'No description';
+                    return `${field.charAt(0).toUpperCase() + field.slice(1)} missing`;
+                });
+                flags.push(`<span class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">${esc(labels.join(' · '))}</span>`);
+            }
+            flags.push(`<span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 border border-slate-200">Serialized: ${esc(product.serial_display)}</span>`);
+            return flags.join('');
+        }
+
+        async function selectSource(productId) {
+            try {
+                const params = new URLSearchParams({ q: productId, page: 1, page_size: 10 });
+                const data = await apiFetch(`/api/equivalent-models/products?${params.toString()}`);
+                const product = (data.products || []).find(item => item.product_id === productId);
+                if (!product) {
+                    showToast('Could not load that product.', 'error');
+                    return;
+                }
+                state.source = product;
+                state.alternativesPage = 1;
+                renderSelectedSource();
+                document.getElementById('source-search-panel').classList.add('hidden');
+                document.getElementById('selected-source-card').classList.remove('hidden');
+                document.getElementById('alternatives-section').classList.remove('hidden');
+                document.getElementById('alt-search').value = '';
+                document.getElementById('alt-status').value = 'active';
+                document.getElementById('alt-category').value = '';
+                document.getElementById('alt-stock').value = 'all';
+                document.getElementById('alt-sort').value = 'last_updated:desc';
+                await loadAlternatives(1);
+                document.getElementById('alternatives-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        }
+
+        function renderSelectedSource() {
+            const product = state.source;
+            if (!product) return;
+            document.getElementById('selected-source-id').textContent = product.product_id || '';
+            document.getElementById('selected-source-name').textContent = product.product_name || 'Unknown product';
+            document.getElementById('selected-source-meta').textContent = `${product.category_name || 'Unknown category'} · ${product.brand_name || 'Unknown brand'} · Model: ${product.model_display || 'Unknown'} · ${product.price_display || 'Unknown'} · Stock: ${product.stock_display || 'Unknown'}`;
+            document.getElementById('selected-source-flags').innerHTML = productFlags(product);
+            const missing = document.getElementById('selected-source-missing');
+            if (product.missing_fields && product.missing_fields.length) {
+                missing.classList.remove('hidden');
+                missing.textContent = `Some catalog fields are missing (${product.missing_fields.join(', ')}). They are shown as Unknown rather than inferred.`;
+            } else {
+                missing.classList.add('hidden');
+                missing.textContent = '';
+            }
+            if (window.lucide) lucide.createIcons();
+        }
+
+        function resetSource() {
+            state.source = null;
+            document.getElementById('selected-source-card').classList.add('hidden');
+            document.getElementById('source-search-panel').classList.remove('hidden');
+            document.getElementById('alternatives-section').classList.add('hidden');
+            document.getElementById('source-search').focus();
+        }
+
+        function currentAltFilters(page = 1) {
+            const sortValue = document.getElementById('alt-sort').value.split(':');
+            return new URLSearchParams({
+                source_product_id: state.source ? state.source.product_id : '',
+                verification_status: document.getElementById('alt-status').value,
+                category_id: document.getElementById('alt-category').value,
+                stock_status: document.getElementById('alt-stock').value,
+                search: document.getElementById('alt-search').value.trim(),
+                sort_by: sortValue[0] || 'last_updated',
+                sort_order: sortValue[1] || 'desc',
+                page,
+                page_size: 20
+            });
+        }
+
+        async function loadAlternatives(page = 1) {
+            if (!state.source) return;
+            state.alternativesPage = page;
+            const loading = document.getElementById('alternatives-loading');
+            const errorBox = document.getElementById('alternatives-error');
+            const empty = document.getElementById('alternatives-empty');
+            const tableWrap = document.getElementById('alternatives-table-wrap');
+            const pagination = document.getElementById('alternatives-pagination');
+
+            loading.classList.remove('hidden');
+            errorBox.classList.add('hidden');
+            empty.classList.add('hidden');
+            tableWrap.classList.add('hidden');
+            pagination.classList.add('hidden');
+
+            try {
+                const data = await apiFetch(`/api/equivalent-models/alternatives?${currentAltFilters(page).toString()}`);
+                const summary = data.summary || {};
+                document.getElementById('summary-active').textContent = summary.active_total ?? '-';
+                document.getElementById('summary-verified').textContent = summary.verified ?? '-';
+                document.getElementById('summary-needs-review').textContent = summary.needs_review ?? '-';
+                document.getElementById('summary-inactive').textContent = summary.inactive ?? '-';
+
+                if (!data.alternatives || data.alternatives.length === 0) {
+                    empty.classList.remove('hidden');
+                    const allEmpty = summary.total_relationships === 0;
+                    document.getElementById('empty-title').textContent = allEmpty ? 'No alternatives recorded' : 'No match for these filters';
+                    document.getElementById('empty-message').textContent = allEmpty
+                        ? (state.isAdmin ? 'Use Add equivalent model to record the first reviewed replacement for this source.' : 'No Admin has recorded an alternative for this source yet.')
+                        : 'Adjust the verification, category or stock filters to see other relationships.';
+                } else {
+                    tableWrap.classList.remove('hidden');
+                    document.getElementById('alternatives-tbody').innerHTML = data.alternatives.map(renderAlternativeRow).join('');
+                    if (data.pagination && data.pagination.total_pages > 1) {
+                        pagination.classList.remove('hidden');
+                        pagination.innerHTML = simplePagination(data.pagination.page, data.pagination.total_pages, 'loadAlternatives');
+                    }
+                }
+                if (window.lucide) lucide.createIcons();
+            } catch (err) {
+                errorBox.classList.remove('hidden');
+                errorBox.innerHTML = `<div class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">${esc(err.message)}</div>`;
+            } finally {
+                loading.classList.add('hidden');
+            }
+        }
+
+        function renderAlternativeRow(rel) {
+            const product = rel.alternative_product;
+            if (!product) {
+                return `<tr>
+                    <td class="px-4 py-3 text-xs" colspan="5">
+                        <span class="text-rose-700 font-semibold">Alternative product record not found</span>
+                        <span class="text-slate-500"> (${esc(rel.alternative_product_id)})</span>
+                    </td>
+                </tr>`;
+            }
+            const actions = [];
+            actions.push(`<button type="button" onclick="openDetail(${rel.id})" class="rounded-lg border border-slate-200 px-2 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50" title="View comparison">View</button>`);
+            if (state.isAdmin) {
+                if (rel.status === 'needs_review') {
+                    actions.push(`<button type="button" onclick="openVerify(${rel.id})" class="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-100">Verify</button>`);
+                }
+                if (rel.status !== 'inactive') {
+                    actions.push(`<button type="button" onclick="openEdit(${rel.id})" class="rounded-lg border border-slate-200 px-2 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50">Edit</button>`);
+                    actions.push(`<button type="button" onclick="openDeactivate(${rel.id})" class="rounded-lg border border-rose-200 px-2 py-1 text-[10px] font-semibold text-rose-700 hover:bg-rose-50">Deactivate</button>`);
+                }
+            }
+            return `<tr class="align-top hover:bg-slate-50/70">
+                <td class="px-4 py-3 min-w-[220px]">
+                    <p class="text-xs font-bold text-slate-800 break-words">${esc(product.product_name)}</p>
+                    <div class="flex flex-wrap items-center gap-1.5 mt-1">
+                        <span class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">${esc(product.product_id)}</span>
+                        <span class="text-[10px] text-slate-500">Model: ${esc(product.model_display)}</span>
+                    </div>
+                    <p class="text-[10px] text-slate-500 mt-1">${esc(product.category_name)} · ${esc(product.brand_name)}</p>
+                </td>
+                <td class="px-4 py-3 min-w-[160px]">
+                    <p class="text-[11px] font-semibold text-slate-700">${esc(product.price_display)}</p>
+                    <div class="mt-1">${stockBadge(product)}</div>
+                    <p class="text-[10px] text-slate-500 mt-1">${product.missing_fields && product.missing_fields.length ? 'Missing: ' + esc(product.missing_fields.join(', ')) : 'Catalog fields complete'}</p>
+                </td>
+                <td class="px-4 py-3 max-w-[260px]">
+                    <p class="text-[11px] text-slate-700 line-clamp-2" title="${esc(rel.reason)}">${esc(rel.reason || 'No reason recorded')}</p>
+                    <p class="text-[10px] text-slate-500 mt-1">Source: ${esc(rel.source || 'Unknown')}</p>
+                </td>
+                <td class="px-4 py-3 min-w-[150px]">
+                    ${statusBadge(rel)}
+                    <p class="text-[10px] text-slate-500 mt-1">${rel.verified_at ? 'Verified ' + esc(rel.verified_at_display) : 'Not verified'}</p>
+                    <p class="text-[10px] text-slate-400">Updated ${esc(rel.last_updated_display)}</p>
+                </td>
+                <td class="px-4 py-3 text-right">
+                    <div class="flex flex-wrap justify-end gap-1.5">${actions.join('')}</div>
+                </td>
+            </tr>`;
+        }
+
+        async function openDetail(id) {
+            const modal = document.getElementById('detail-modal');
+            const body = document.getElementById('detail-body');
+            body.innerHTML = '<div class="py-10 text-center text-xs text-slate-500"><span class="inline-block w-4 h-4 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin align-middle mr-2"></span>Loading comparison...</div>';
+            openModal('detail-modal');
+            try {
+                const data = await apiFetch(`/api/equivalent-models/relationships/${id}`);
+                const rel = data.relationship || {};
+                const source = data.source_product;
+                const alternative = data.alternative_product;
+                document.getElementById('detail-title').textContent = `${source ? source.product_name : rel.source_product_id} → ${alternative ? alternative.product_name : rel.alternative_product_id}`;
+                const comparisonRows = (data.comparison || []).map(row => {
+                    let marker = '<span class="text-[10px] text-slate-400">Unknown</span>';
+                    if (row.same === true) marker = '<span class="text-[10px] font-semibold text-slate-500">Same</span>';
+                    if (row.same === false) marker = '<span class="text-[10px] font-semibold text-blue-700">Different</span>';
+                    return `<tr class="border-b border-slate-100 last:border-0">
+                        <td class="py-2 pr-3 text-[11px] font-semibold text-slate-600 align-top">${esc(row.label)}</td>
+                        <td class="py-2 pr-3 text-[11px] text-slate-800 align-top">${esc(row.source)}</td>
+                        <td class="py-2 pr-3 text-[11px] text-slate-800 align-top">${esc(row.alternative)}</td>
+                        <td class="py-2 text-right align-top">${marker}</td>
+                    </tr>`;
+                }).join('');
+                const missing = (data.missing_products || []).length
+                    ? `<div class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-700 mb-3">Missing catalog records: ${esc(data.missing_products.join(', '))}. Values are shown as Unknown.</div>`
+                    : '';
+                body.innerHTML = `
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                        <div class="rounded-xl border border-slate-200 p-3">
+                            <p class="text-[10px] font-bold uppercase text-slate-500 mb-1">Source</p>
+                            <p class="text-sm font-bold text-slate-800 break-words">${esc(source ? source.product_name : rel.source_product_id)}</p>
+                            <p class="text-[10px] text-slate-500 mt-1">${source ? `${esc(source.product_id)} · ${esc(source.category_name)} · ${esc(source.brand_name)}` : 'Product record not found'}</p>
+                            <p class="text-[10px] text-slate-600 mt-2">${source ? `${esc(source.price_display)} · Stock: ${esc(source.stock_display)} · Model: ${esc(source.model_display)}` : ''}</p>
+                        </div>
+                        <div class="rounded-xl border border-slate-200 p-3">
+                            <p class="text-[10px] font-bold uppercase text-slate-500 mb-1">Alternative</p>
+                            <p class="text-sm font-bold text-slate-800 break-words">${esc(alternative ? alternative.product_name : rel.alternative_product_id)}</p>
+                            <p class="text-[10px] text-slate-500 mt-1">${alternative ? `${esc(alternative.product_id)} · ${esc(alternative.category_name)} · ${esc(alternative.brand_name)}` : 'Product record not found'}</p>
+                            <p class="text-[10px] text-slate-600 mt-2">${alternative ? `${esc(alternative.price_display)} · Stock: ${esc(alternative.stock_display)} · Model: ${esc(alternative.model_display)}` : ''}</p>
+                        </div>
+                    </div>
+                    ${missing}
+                    <div class="flex flex-wrap items-center gap-2 mb-4">
+                        ${statusBadge(rel)}
+                        <span class="text-[10px] text-slate-500">Direction: ${esc(rel.source_product_id)} → ${esc(rel.alternative_product_id)}</span>
+                    </div>
+                    <div class="rounded-xl border border-slate-200 p-3 mb-4">
+                        <p class="text-[10px] font-bold uppercase text-slate-500 mb-1">Evidence</p>
+                        <p class="text-xs text-slate-800 leading-relaxed whitespace-pre-wrap">${esc(rel.reason || 'No reason recorded')}</p>
+                        <p class="text-[10px] text-slate-500 mt-2">Source: ${esc(rel.source || 'Unknown')} · Recorded by ${esc(rel.created_by || 'Unknown')}</p>
+                        ${rel.verified_at ? `<p class="text-[10px] text-emerald-700 mt-1">Verified by ${esc(rel.verified_by || 'Admin')} on ${esc(rel.verified_at_display)}</p>` : '<p class="text-[10px] text-amber-700 mt-1">Not Admin verified.</p>'}
+                    </div>
+                    <div class="rounded-xl border border-slate-200 overflow-hidden mb-4">
+                        <div class="px-3 py-2 bg-slate-50 border-b border-slate-200">
+                            <h4 class="text-xs font-bold text-slate-700">Catalog comparison</h4>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left">
+                                <thead>
+                                    <tr class="text-[10px] uppercase text-slate-500 border-b border-slate-100">
+                                        <th class="px-3 py-2 font-bold">Field</th>
+                                        <th class="px-3 py-2 font-bold">Source</th>
+                                        <th class="px-3 py-2 font-bold">Alternative</th>
+                                        <th class="px-3 py-2 font-bold text-right">Match</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="px-3">${comparisonRows}</tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[10px] text-sky-900 leading-relaxed">${esc(data.compatibility_notice || '')}</div>
+                `;
+                if (window.lucide) lucide.createIcons();
+            } catch (err) {
+                body.innerHTML = `<div class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">${esc(err.message)}</div>`;
+            }
+            if (window.lucide) lucide.createIcons();
+        }
+
+        function openAddModal() {
+            if (!state.isAdmin || !state.source) return;
+            state.addAlternative = null;
+            document.getElementById('add-form').reset();
+            document.getElementById('add-source').value = 'Admin entry';
+            document.getElementById('add-source-name').textContent = `${state.source.product_name} (${state.source.product_id})`;
+            document.getElementById('add-alt-search').value = '';
+            document.getElementById('add-alt-results').innerHTML = '<p class="rounded-lg border border-dashed border-slate-200 px-3 py-4 text-center text-[11px] text-slate-500">Type to search alternatives.</p>';
+            document.getElementById('add-alt-selected').classList.add('hidden');
+            document.getElementById('add-error').classList.add('hidden');
+            openModal('add-modal');
+            setTimeout(() => document.getElementById('add-alt-search').focus(), 50);
+        }
+
+        function clearAddAlternative() {
+            state.addAlternative = null;
+            document.getElementById('add-alt-selected').classList.add('hidden');
+        }
+
+        async function searchAddAlternatives() {
+            const q = document.getElementById('add-alt-search').value.trim();
+            const results = document.getElementById('add-alt-results');
+            if (!q) {
+                results.innerHTML = '<p class="rounded-lg border border-dashed border-slate-200 px-3 py-4 text-center text-[11px] text-slate-500">Type to search alternatives.</p>';
+                return;
+            }
+            results.innerHTML = '<p class="px-3 py-4 text-center text-[11px] text-slate-500">Searching...</p>';
+            try {
+                const params = new URLSearchParams({ q, page: 1, page_size: 8 });
+                const data = await apiFetch(`/api/equivalent-models/products?${params.toString()}`);
+                const products = (data.products || []).filter(product => !state.source || product.product_id !== state.source.product_id);
+                if (!products.length) {
+                    results.innerHTML = '<p class="rounded-lg border border-dashed border-slate-200 px-3 py-4 text-center text-[11px] text-slate-500">No alternative product matches.</p>';
+                    return;
+                }
+                results.innerHTML = products.map(product => `
+                    <button type="button" onclick="chooseAddAlternative('${esc(product.product_id)}')" class="w-full text-left rounded-lg border border-slate-200 px-3 py-2 hover:border-blue-300 hover:bg-blue-50/40 transition">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="text-[11px] font-bold text-slate-800">${esc(product.product_name)}</span>
+                            <span class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">${esc(product.product_id)}</span>
+                        </div>
+                        <p class="text-[10px] text-slate-500 mt-0.5">${esc(product.category_name)} · ${esc(product.brand_name)} · ${esc(product.price_display)}</p>
+                    </button>
+                `).join('');
+            } catch (err) {
+                results.innerHTML = `<p class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-[11px] text-rose-700">${esc(err.message)}</p>`;
+            }
+        }
+
+        async function chooseAddAlternative(productId) {
+            try {
+                const params = new URLSearchParams({ q: productId, page: 1, page_size: 10 });
+                const data = await apiFetch(`/api/equivalent-models/products?${params.toString()}`);
+                const product = (data.products || []).find(item => item.product_id === productId);
+                if (!product) {
+                    showToast('Could not load that product.', 'error');
+                    return;
+                }
+                state.addAlternative = product;
+                document.getElementById('add-alt-selected').classList.remove('hidden');
+                document.getElementById('add-alt-name').textContent = product.product_name;
+                document.getElementById('add-alt-meta').textContent = `${product.product_id} · ${product.category_name} · ${product.brand_name} · ${product.price_display} · Stock: ${product.stock_display}`;
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        }
+
+        async function submitAdd(event) {
+            event.preventDefault();
+            const errorBox = document.getElementById('add-error');
+            errorBox.classList.add('hidden');
+            if (!state.source) return;
+            if (!state.addAlternative) {
+                errorBox.textContent = 'Choose an alternative product first.';
+                errorBox.classList.remove('hidden');
+                return;
+            }
+            const reason = document.getElementById('add-reason').value.trim();
+            if (!reason) {
+                errorBox.textContent = 'A reason is required.';
+                errorBox.classList.remove('hidden');
+                return;
+            }
+            const button = document.getElementById('add-submit');
+            button.disabled = true;
+            try {
+                await apiFetch('/api/equivalent-models/relationships', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        source_product_id: state.source.product_id,
+                        alternative_product_id: state.addAlternative.product_id,
+                        reason,
+                        source: document.getElementById('add-source').value.trim() || 'Admin entry'
+                    })
+                });
+                closeModal('add-modal');
+                showToast('Relationship recorded for review.');
+                await loadAlternatives(state.alternativesPage);
+            } catch (err) {
+                errorBox.textContent = err.message;
+                errorBox.classList.remove('hidden');
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        function relationshipLabel(rel) {
+            const alt = rel.alternative_product;
+            return `${state.source ? state.source.product_id : rel.source_product_id} → ${alt ? alt.product_id : rel.alternative_product_id}`;
+        }
+
+        async function fetchRelationship(id) {
+            const data = await apiFetch(`/api/equivalent-models/relationships/${id}`);
+            return data.relationship;
+        }
+
+        async function openEdit(id) {
+            try {
+                const rel = await fetchRelationship(id);
+                state.editRelationship = rel;
+                document.getElementById('edit-context').textContent = `Direction: ${relationshipLabel(rel)}. Editing evidence changes the reason and source only; it does not verify the relationship.`;
+                document.getElementById('edit-reason').value = rel.reason || '';
+                document.getElementById('edit-source').value = rel.source || '';
+                document.getElementById('edit-error').classList.add('hidden');
+                openModal('edit-modal');
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        }
+
+        async function submitEdit(event) {
+            event.preventDefault();
+            if (!state.editRelationship) return;
+            const errorBox = document.getElementById('edit-error');
+            errorBox.classList.add('hidden');
+            const reason = document.getElementById('edit-reason').value.trim();
+            if (!reason) {
+                errorBox.textContent = 'A reason is required.';
+                errorBox.classList.remove('hidden');
+                return;
+            }
+            const button = document.getElementById('edit-submit');
+            button.disabled = true;
+            try {
+                await apiFetch(`/api/equivalent-models/relationships/${state.editRelationship.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        reason,
+                        source: document.getElementById('edit-source').value.trim() || 'Admin entry'
+                    })
+                });
+                closeModal('edit-modal');
+                showToast('Relationship evidence updated.');
+                await loadAlternatives(state.alternativesPage);
+            } catch (err) {
+                errorBox.textContent = err.message;
+                errorBox.classList.remove('hidden');
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        async function openVerify(id) {
+            try {
+                const rel = await fetchRelationship(id);
+                state.verifyRelationship = rel;
+                document.getElementById('verify-context').textContent = `Direction: ${relationshipLabel(rel)}. Verify only if the evidence supports this directional recommendation.`;
+                document.getElementById('verify-reason').value = rel.reason || '';
+                document.getElementById('verify-source').value = rel.source || '';
+                document.getElementById('verify-error').classList.add('hidden');
+                openModal('verify-modal');
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        }
+
+        async function submitVerify(event) {
+            event.preventDefault();
+            if (!state.verifyRelationship) return;
+            const errorBox = document.getElementById('verify-error');
+            errorBox.classList.add('hidden');
+            const reason = document.getElementById('verify-reason').value.trim();
+            if (!reason) {
+                errorBox.textContent = 'A reason is required before verification.';
+                errorBox.classList.remove('hidden');
+                return;
+            }
+            const button = document.getElementById('verify-submit');
+            button.disabled = true;
+            try {
+                await apiFetch(`/api/equivalent-models/relationships/${state.verifyRelationship.id}/verify`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason, source: document.getElementById('verify-source').value.trim() || 'Admin entry' })
+                });
+                closeModal('verify-modal');
+                showToast('Relationship verified by Admin.');
+                await loadAlternatives(state.alternativesPage);
+            } catch (err) {
+                errorBox.textContent = err.message;
+                errorBox.classList.remove('hidden');
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        async function openDeactivate(id) {
+            try {
+                const rel = await fetchRelationship(id);
+                state.deactivateRelationship = rel;
+                document.getElementById('deactivate-context').textContent = `Deactivate ${relationshipLabel(rel)}? The relationship will be hidden from active recommendations.`;
+                document.getElementById('deactivate-error').classList.add('hidden');
+                openModal('deactivate-modal');
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        }
+
+        async function submitDeactivate() {
+            if (!state.deactivateRelationship) return;
+            const button = document.getElementById('deactivate-submit');
+            const errorBox = document.getElementById('deactivate-error');
+            errorBox.classList.add('hidden');
+            button.disabled = true;
+            try {
+                await apiFetch(`/api/equivalent-models/relationships/${state.deactivateRelationship.id}/deactivate`, { method: 'POST' });
+                closeModal('deactivate-modal');
+                showToast('Relationship deactivated.');
+                await loadAlternatives(state.alternativesPage);
+            } catch (err) {
+                errorBox.textContent = err.message;
+                errorBox.classList.remove('hidden');
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        function openModal(id) {
+            const modal = document.getElementById(id);
+            if (!modal) return;
+            modal.classList.remove('hidden');
+            document.body.classList.add('overflow-hidden');
+            if (window.lucide) lucide.createIcons();
+        }
+
+        function closeModal(id) {
+            const modal = document.getElementById(id);
+            if (!modal) return;
+            modal.classList.add('hidden');
+            if (!document.querySelector('.modal-root:not(.hidden)')) {
+                document.body.classList.remove('overflow-hidden');
+            }
+        }
+
+        function refreshCurrentView() {
+            if (state.source) {
+                loadAlternatives(state.alternativesPage);
+            } else if (document.getElementById('source-search').value.trim()) {
+                searchSources(1);
+            } else {
+                searchSources(1);
+            }
+        }
+
+        document.getElementById('source-search').addEventListener('input', debounce(() => searchSources(1), 350));
+        document.getElementById('source-category').addEventListener('change', () => searchSources(1));
+        document.getElementById('alt-search').addEventListener('input', debounce(() => loadAlternatives(1), 300));
+        document.getElementById('alt-status').addEventListener('change', () => loadAlternatives(1));
+        document.getElementById('alt-category').addEventListener('change', () => loadAlternatives(1));
+        document.getElementById('alt-stock').addEventListener('change', () => loadAlternatives(1));
+        document.getElementById('alt-sort').addEventListener('change', () => loadAlternatives(1));
+        document.getElementById('add-alt-search').addEventListener('input', debounce(searchAddAlternatives, 350));
+
+        document.addEventListener('keydown', event => {
+            if (event.key !== 'Escape') return;
+            const openModals = Array.from(document.querySelectorAll('.modal-root:not(.hidden)'));
+            if (openModals.length) closeModal(openModals[openModals.length - 1].id);
+        });
+
+        applySidebarState();
+        window.addEventListener('resize', applySidebarState);
+        loadSidebarMenus();
+        loadBootstrap();
+        if (window.lucide) lucide.createIcons();
+    </script>
+</body>
+</html>

@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Warranty Tracking — Printer Analytics</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .sidebar-scroll::-webkit-scrollbar { width: 4px; }
+        .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+        .sidebar-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+        .sidebar-nav-item { transition: all 0.15s ease; }
+        .sidebar-nav-item:hover { background: rgba(255,255,255,0.08); }
+        .sidebar-nav-item.active { background: rgba(59, 130, 246, 0.25); border-right: 3px solid #3b82f6; }
+        @media (max-width: 1023px) {
+            .sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 40; display: none; }
+            .sidebar-overlay.active { display: block; }
+        }
+        .modal-scroll::-webkit-scrollbar { width: 6px; }
+        .modal-scroll::-webkit-scrollbar-track { background: #f1f5f9; }
+        .modal-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex">
+
+    <!-- Mobile Sidebar Overlay -->
+    <div id="sidebar-overlay" class="sidebar-overlay lg:hidden" onclick="toggleSidebar()"></div>
+
+    <!-- ===== SIDEBAR ===== -->
+    <aside id="sidebar" class="fixed top-0 left-0 z-50 h-screen w-64 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-white flex flex-col transition-all duration-300 ease-in-out -translate-x-full lg:translate-x-0 shadow-2xl">
+        <!-- Brand Header -->
+        <div class="h-16 flex items-center gap-3 px-5 border-b border-white/10 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20 text-white font-bold">
+                <i data-lucide="printer" class="w-5 h-5"></i>
+            </div>
+            <div>
+                <h1 class="text-sm font-bold tracking-tight text-white leading-none">Printer Analytics</h1>
+                <p class="text-[10px] text-slate-400 font-medium mt-0.5">Fleet Ops & Intelligence</p>
+            </div>
+        </div>
+
+        <!-- Navigation Links -->
+        <nav class="flex-1 overflow-y-auto sidebar-scroll px-3 py-4 space-y-1" id="sidebar-nav-container">
+            <div class="px-3 py-4 text-xs text-slate-400 flex items-center gap-2">
+                <div class="w-4 h-4 border-2 border-slate-500 border-t-blue-500 rounded-full animate-spin"></div>
+                <span>Loading menus...</span>
+            </div>
+        </nav>
+
+        <!-- Sidebar Footer -->
+        <div class="p-3 border-t border-white/10 shrink-0 bg-slate-950/40">
+            <div class="flex items-center justify-between px-2 py-1.5 text-xs text-slate-400">
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span class="font-medium text-slate-300">Database Live</span>
+                </div>
+                <span class="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-white/10 text-slate-300">
+                    {{ user.role if user and user.role else 'User' }}
+                </span>
+            </div>
+            <a href="/logout" class="mt-2 w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/10 transition">
+                <i data-lucide="log-out" class="w-4 h-4"></i>
+                <span>Sign Out</span>
+            </a>
+        </div>
+    </aside>
+
+    <!-- ===== MAIN CONTENT AREA ===== -->
+    <div id="main-content" class="transition-all duration-300 ease-in-out lg:ml-64 flex-1 flex flex-col min-h-screen">
+
+        <!-- Top Header Bar -->
+        <header class="sticky top-0 z-30 h-16 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-4 sm:px-6 flex items-center justify-between shadow-xs">
+            <div class="flex items-center gap-3">
+                <button type="button" onclick="toggleSidebar()" class="p-2 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 transition flex items-center justify-center" aria-label="Toggle navigation menu">
+                    <i data-lucide="menu" class="w-5 h-5"></i>
+                </button>
+                <div class="flex items-center gap-2 text-xs font-medium text-slate-500">
+                    <a href="/menus/dashboard" class="hover:text-blue-600 transition">Dashboard</a>
+                    <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+                    <span>Client Operations</span>
+                    <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+                    <span class="text-slate-900 font-semibold">Warranty Customers</span>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2 sm:gap-3">
+                {% if user and user.role and user.role.lower() == 'admin' %}
+                <button type="button" onclick="openAddModal()" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-500/20 transition">
+                    <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                    <span>Add Warranty</span>
+                </button>
+                {% endif %}
+                <button type="button" onclick="fetchWarranties()" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg shadow-xs transition" title="Refresh Warranty Records">
+                    <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-slate-500" id="refresh-icon"></i>
+                    <span class="hidden sm:inline">Refresh</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Body -->
+        <main class="flex-1 p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl w-full mx-auto">
+
+            <!-- Title & Context -->
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                    <h2 class="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5">
+                        <span class="p-2 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100">
+                            <i data-lucide="shield-check" class="w-6 h-6"></i>
+                        </span>
+                        Customer Warranty Intelligence
+                    </h2>
+                    <p class="text-xs sm:text-sm text-slate-500 mt-1">
+                        Monitor product warranties, track expiring hardware coverage, and manage manufacturer service records.
+                    </p>
+                </div>
+                <div class="text-left sm:text-right">
+                    <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 text-[11px] font-medium text-slate-600 border border-slate-200">
+                        <i data-lucide="info" class="w-3.5 h-3.5 text-blue-500"></i>
+                        <span>Card counts represent <strong>warranty records</strong>, not unique customers.</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== SUMMARY CARDS ===== -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <!-- Active Card -->
+                <div onclick="filterByStatus('active')" class="cursor-pointer bg-white border border-slate-200 rounded-2xl p-5 hover:border-emerald-300 hover:shadow-md transition group">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-emerald-700 uppercase tracking-wider">Active</span>
+                        <div class="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:scale-110 transition">
+                            <i data-lucide="shield-check" class="w-5 h-5"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <div class="text-2xl sm:text-3xl font-extrabold text-slate-900" id="card-active-count">-</div>
+                        <p class="text-xs text-slate-500 mt-1">Ends more than 30 days later</p>
+                    </div>
+                </div>
+
+                <!-- Expiring Soon Card -->
+                <div onclick="filterByStatus('expiring_soon')" class="cursor-pointer bg-white border border-slate-200 rounded-2xl p-5 hover:border-amber-300 hover:shadow-md transition group">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-amber-700 uppercase tracking-wider">Expiring Soon</span>
+                        <div class="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center group-hover:scale-110 transition">
+                            <i data-lucide="clock" class="w-5 h-5"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <div class="text-2xl sm:text-3xl font-extrabold text-slate-900" id="card-expiring-count">-</div>
+                        <p class="text-xs text-slate-500 mt-1">Ends today or within next 30 days</p>
+                    </div>
+                </div>
+
+                <!-- Expired Card -->
+                <div onclick="filterByStatus('expired')" class="cursor-pointer bg-white border border-slate-200 rounded-2xl p-5 hover:border-rose-300 hover:shadow-md transition group">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-rose-700 uppercase tracking-wider">Expired</span>
+                        <div class="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center group-hover:scale-110 transition">
+                            <i data-lucide="shield-x" class="w-5 h-5"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <div class="text-2xl sm:text-3xl font-extrabold text-slate-900" id="card-expired-count">-</div>
+                        <p class="text-xs text-slate-500 mt-1">End date is before today</p>
+                    </div>
+                </div>
+
+                <!-- Unknown Card -->
+                <div onclick="filterByStatus('unknown')" class="cursor-pointer bg-white border border-slate-200 rounded-2xl p-5 hover:border-blue-300 hover:shadow-md transition group">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-slate-600 uppercase tracking-wider">Unknown</span>
+                        <div class="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center group-hover:scale-110 transition">
+                            <i data-lucide="help-circle" class="w-5 h-5"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <div class="text-2xl sm:text-3xl font-extrabold text-slate-900" id="card-unknown-count">-</div>
+                        <p class="text-xs text-slate-500 mt-1">Missing start or end dates</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== SEARCH & FILTERS BAR ===== -->
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-3">
+                    <!-- Search Input -->
+                    <div class="md:col-span-4 relative">
+                        <label for="search-input" class="sr-only">Search</label>
+                        <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                        <input type="text" id="search-input" placeholder="Search customer, phone, product, invoice, serial..." class="w-full pl-10 pr-4 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-hidden transition">
+                    </div>
+
+                    <!-- Status Filter Tabs -->
+                    <div class="md:col-span-5 flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0" id="status-filter-pills">
+                        <button type="button" onclick="filterByStatus('all')" class="status-pill px-3 py-2 rounded-xl text-xs font-semibold bg-blue-600 text-white whitespace-nowrap transition" data-status="all">All</button>
+                        <button type="button" onclick="filterByStatus('active')" class="status-pill px-3 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 whitespace-nowrap transition" data-status="active">Active</button>
+                        <button type="button" onclick="filterByStatus('expiring_soon')" class="status-pill px-3 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 whitespace-nowrap transition" data-status="expiring_soon">Expiring Soon</button>
+                        <button type="button" onclick="filterByStatus('expired')" class="status-pill px-3 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 whitespace-nowrap transition" data-status="expired">Expired</button>
+                        <button type="button" onclick="filterByStatus('unknown')" class="status-pill px-3 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 whitespace-nowrap transition" data-status="unknown">Unknown</button>
+                    </div>
+
+                    <!-- Sort Dropdown -->
+                    <div class="md:col-span-3 flex items-center gap-2">
+                        <select id="sort-select" onchange="applyFilters()" class="w-full py-2 px-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-500 outline-hidden">
+                            <option value="warranty_end_date:asc">Expiry Date (Earliest first)</option>
+                            <option value="warranty_end_date:desc">Expiry Date (Latest first)</option>
+                            <option value="sales_date:desc">Sale Date (Newest first)</option>
+                            <option value="customer_name:asc">Customer Name (A-Z)</option>
+                            <option value="product_name:asc">Product Name (A-Z)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Secondary Date Range Filter Row -->
+                <div class="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100 text-xs">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="text-slate-500 font-medium">Filter by Expiry Range:</span>
+                        <input type="date" id="date-from" onchange="applyFilters()" class="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:bg-white focus:border-blue-500 outline-hidden">
+                        <span class="text-slate-400">to</span>
+                        <input type="date" id="date-to" onchange="applyFilters()" class="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:bg-white focus:border-blue-500 outline-hidden">
+                        <button type="button" onclick="clearDateFilters()" class="px-2.5 py-1.5 text-slate-500 hover:text-slate-800 font-medium">Clear Dates</button>
+                    </div>
+                    <div class="text-slate-500" id="records-counter-text">
+                        Showing - records
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== WARRANTY DATA TABLE ===== -->
+            <div class="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs sm:text-sm">
+                        <thead class="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[11px]">
+                            <tr>
+                                <th scope="col" class="py-3.5 px-4 sm:px-6">Customer</th>
+                                <th scope="col" class="py-3.5 px-4">Product & Invoice</th>
+                                <th scope="col" class="py-3.5 px-4">Serial Number</th>
+                                <th scope="col" class="py-3.5 px-4">Warranty Period</th>
+                                <th scope="col" class="py-3.5 px-4">Status</th>
+                                <th scope="col" class="py-3.5 px-4 sm:px-6 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="warranty-table-body" class="divide-y divide-slate-100 text-slate-700">
+                            <!-- Rows dynamically populated -->
+                            <tr>
+                                <td colspan="6" class="py-12 text-center text-slate-400">
+                                    <div class="inline-flex items-center gap-2">
+                                        <div class="w-4 h-4 border-2 border-slate-400 border-t-blue-500 rounded-full animate-spin"></div>
+                                        <span>Loading warranty records...</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Empty State -->
+                <div id="empty-state" class="hidden py-16 text-center px-4">
+                    <div class="w-14 h-14 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+                        <i data-lucide="shield-off" class="w-7 h-7"></i>
+                    </div>
+                    <h3 class="text-base font-bold text-slate-800">No Warranty Records Found</h3>
+                    <p class="text-xs text-slate-500 max-w-sm mx-auto mt-1" id="empty-state-desc">
+                        No records match the current search or status filter. Try clearing filters or creating a new warranty entry.
+                    </p>
+                    <button type="button" onclick="resetAllFilters()" class="mt-4 px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition">
+                        Reset All Filters
+                    </button>
+                </div>
+
+                <!-- Error State -->
+                <div id="error-state" class="hidden py-16 text-center px-4">
+                    <div class="w-14 h-14 rounded-2xl bg-rose-50 text-rose-500 flex items-center justify-center mx-auto mb-3">
+                        <i data-lucide="alert-octagon" class="w-7 h-7"></i>
+                    </div>
+                    <h3 class="text-base font-bold text-slate-800">Failed to Load Warranty Data</h3>
+                    <p class="text-xs text-rose-600 max-w-md mx-auto mt-1" id="error-message-text">
+                        An unexpected error occurred while communicating with the database.
+                    </p>
+                    <button type="button" onclick="fetchWarranties()" class="mt-4 px-4 py-2 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white transition">
+                        Retry Request
+                    </button>
+                </div>
+
+                <!-- Pagination Footer -->
+                <div class="p-4 border-t border-slate-200/80 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+                    <div id="pagination-info">
+                        Showing page 1 of 1
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <button type="button" id="prev-page-btn" onclick="goToPage(currentPage - 1)" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition" disabled>
+                            Previous
+                        </button>
+                        <div id="page-numbers" class="flex items-center gap-1">
+                            <!-- Page number buttons -->
+                        </div>
+                        <button type="button" id="next-page-btn" onclick="goToPage(currentPage + 1)" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition" disabled>
+                            Next
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- ===== VIEW DETAILS MODAL ===== -->
+    <div id="details-modal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden border border-slate-100">
+            <!-- Modal Header -->
+            <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                        <i data-lucide="shield" class="w-4 h-4"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-900" id="modal-title">Warranty Record Details</h3>
+                        <p class="text-[11px] text-slate-500" id="modal-subtitle">Record Reference ID</p>
+                    </div>
+                </div>
+                <button type="button" onclick="closeDetailsModal()" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="p-6 overflow-y-auto modal-scroll space-y-5" id="modal-details-content">
+                <!-- Dynamically populated -->
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="px-6 py-3.5 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+                <div id="modal-audit-text" class="text-[11px] text-slate-400">
+                    Last updated: -
+                </div>
+                <div class="flex items-center gap-2">
+                    {% if user and user.role and user.role.lower() == 'admin' %}
+                    <button type="button" id="modal-edit-action-btn" class="px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition">
+                        Edit Warranty
+                    </button>
+                    {% endif %}
+                    <button type="button" onclick="closeDetailsModal()" class="px-3.5 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== ADMIN ADD / EDIT MODAL ===== -->
+    {% if user and user.role and user.role.lower() == 'admin' %}
+    <div id="edit-modal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-lg w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden border border-slate-100">
+            <!-- Modal Header -->
+            <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                        <i data-lucide="edit-3" class="w-4 h-4"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-900" id="edit-modal-title">Edit Warranty Record</h3>
+                        <p class="text-[11px] text-slate-500" id="edit-modal-subtitle">Update coverage terms and dates</p>
+                    </div>
+                </div>
+                <button type="button" onclick="closeEditModal()" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Form Body -->
+            <form id="warranty-form" onsubmit="handleWarrantyFormSubmit(event)" class="p-6 overflow-y-auto modal-scroll space-y-4">
+                <input type="hidden" id="form-record-id" value="">
+
+                <!-- Customer ID -->
+                <div>
+                    <label for="form-customer-id" class="block text-xs font-semibold text-slate-700 mb-1">Customer ID <span class="text-rose-500">*</span></label>
+                    <input type="text" id="form-customer-id" required placeholder="e.g. CS00000001" class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-500 outline-hidden">
+                </div>
+
+                <!-- Invoice Number / Sales ID -->
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label for="form-sales-id" class="block text-xs font-semibold text-slate-700 mb-1">Invoice / Sales ID <span class="text-rose-500">*</span></label>
+                        <input type="text" id="form-sales-id" required placeholder="e.g. INV001260004705" class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-500 outline-hidden">
+                    </div>
+                    <div>
+                        <label for="form-product-id" class="block text-xs font-semibold text-slate-700 mb-1">Product ID <span class="text-rose-500">*</span></label>
+                        <input type="text" id="form-product-id" required placeholder="e.g. PD00000252" class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-500 outline-hidden">
+                    </div>
+                </div>
+
+                <!-- Serial Number -->
+                <div>
+                    <label for="form-serial" class="block text-xs font-semibold text-slate-700 mb-1">Serial Number (optional)</label>
+                    <input type="text" id="form-serial" placeholder="Hardware unit serial number, e.g. SN-88492" class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-500 outline-hidden">
+                </div>
+
+                <!-- Warranty Dates -->
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label for="form-start-date" class="block text-xs font-semibold text-slate-700 mb-1">Warranty Start Date</label>
+                        <input type="date" id="form-start-date" onchange="validateFormDates()" class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-500 outline-hidden">
+                    </div>
+                    <div>
+                        <label for="form-end-date" class="block text-xs font-semibold text-slate-700 mb-1">Warranty End Date</label>
+                        <input type="date" id="form-end-date" onchange="validateFormDates()" class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-500 outline-hidden">
+                    </div>
+                </div>
+
+                <!-- Date validation error box -->
+                <div id="form-date-error" class="hidden p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                    <i data-lucide="alert-circle" class="w-4 h-4 shrink-0"></i>
+                    <span>Warranty end date cannot be earlier than start date.</span>
+                </div>
+
+                <!-- Warranty Source -->
+                <div>
+                    <label for="form-source" class="block text-xs font-semibold text-slate-700 mb-1">Warranty Source / Terms</label>
+                    <input type="text" id="form-source" placeholder="e.g. Manufacturer Warranty, Dealer 1-Year, Invoice Standard" class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-500 outline-hidden">
+                </div>
+
+                <!-- Notes -->
+                <div>
+                    <label for="form-notes" class="block text-xs font-semibold text-slate-700 mb-1">Administrator Notes</label>
+                    <textarea id="form-notes" rows="3" placeholder="Enter warranty terms, exclusions, or replacement conditions..." class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-500 outline-hidden resize-none"></textarea>
+                </div>
+
+                <div class="pt-2">
+                    <button type="submit" id="form-submit-btn" class="w-full py-2.5 px-4 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-sm transition flex items-center justify-center gap-2">
+                        <i data-lucide="save" class="w-4 h-4"></i>
+                        <span id="form-submit-text">Save Warranty Record</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ===== TOAST CONTAINER ===== -->
+    <div id="toast" class="fixed bottom-5 right-5 z-50 max-w-sm px-4 py-3 rounded-2xl shadow-xl border text-xs font-medium flex items-center gap-3 transition-all duration-300 translate-y-12 opacity-0 pointer-events-none">
+        <i id="toast-icon" data-lucide="info" class="w-4 h-4 shrink-0"></i>
+        <span id="toast-msg">Notification message</span>
+    </div>
+
+    <!-- Application Script -->
+    <script>
+        const CURRENT_USER_ROLE = "{{ user.role if user and user.role else 'user' }}".toLowerCase();
+        const IS_ADMIN = CURRENT_USER_ROLE === "admin";
+
+        let currentSearch = "";
+        let currentStatus = "all";
+        let currentDateFrom = "";
+        let currentDateTo = "";
+        let currentSortBy = "warranty_end_date";
+        let currentSortOrder = "asc";
+        let currentPage = 1;
+        let currentPageSize = 25;
+        let totalPages = 1;
+
+        // Sidebar toggle & collapse state
+        let isSidebarCollapsed = localStorage.getItem('sidebar_collapsed') === 'true';
+
+        function applySidebarState() {
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.getElementById('main-content');
+            const overlay = document.getElementById('sidebar-overlay');
+            if (!sidebar || !mainContent) return;
+
+            if (window.innerWidth >= 1024) {
+                if (overlay) overlay.classList.remove('active');
+                if (isSidebarCollapsed) {
+                    sidebar.classList.add('lg:-translate-x-full');
+                    sidebar.classList.remove('lg:translate-x-0');
+                    mainContent.classList.remove('lg:ml-64');
+                    mainContent.classList.add('lg:ml-0');
+                } else {
+                    sidebar.classList.remove('lg:-translate-x-full');
+                    sidebar.classList.add('lg:translate-x-0');
+                    mainContent.classList.add('lg:ml-64');
+                    mainContent.classList.remove('lg:ml-0');
+                }
+            } else {
+                mainContent.classList.remove('lg:ml-0');
+                mainContent.classList.add('lg:ml-64');
+                if (isSidebarCollapsed) {
+                    sidebar.classList.remove('translate-x-0');
+                    sidebar.classList.add('-translate-x-full');
+                    if (overlay) overlay.classList.remove('active');
+                } else {
+                    sidebar.classList.add('translate-x-0');
+                    sidebar.classList.remove('-translate-x-full');
+                    if (overlay) overlay.classList.add('active');
+                }
+            }
+        }
+
+        function toggleSidebar() {
+            isSidebarCollapsed = !isSidebarCollapsed;
+            localStorage.setItem('sidebar_collapsed', isSidebarCollapsed);
+            applySidebarState();
+        }
+        applySidebarState();
+        window.addEventListener('resize', applySidebarState);
+
+        // Sidebar dynamic loading
+        async function loadSidebarMenus() {
+            try {
+                const res = await fetch('/api/menus');
+                const menus = await res.json();
+                renderSidebarNav(menus);
+            } catch (err) {
+                console.error("Failed to load sidebar menus:", err);
+            }
+        }
+
+        function renderSidebarNav(menus) {
+            const container = document.getElementById('sidebar-nav-container');
+            if (!container) return;
+            const sections = {};
+            (menus || []).forEach(m => {
+                const sec = m.section || 'General';
+                if (!sections[sec]) sections[sec] = [];
+                sections[sec].push(m);
+            });
+            let html = '';
+            const currentPath = window.location.pathname;
+
+            for (const [secTitle, items] of Object.entries(sections)) {
+                html += `<p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-3 mt-4 mb-2 first:mt-1">${escapeHtml(secTitle)}</p>`;
+                items.forEach((m, idx) => {
+                    const hasSubmenus = m.submenus && m.submenus.length > 0;
+                    const menuId = `menu-tree-${m.id || idx}`;
+                    const isAnyChildActive = hasSubmenus && m.submenus.some(s => s.url === currentPath || (s.url && s.url.includes('customer-warranty') && currentPath.includes('customer-warranty')));
+                    const isDirectActive = !hasSubmenus && (currentPath === m.url || (m.url && m.url.includes('customer-warranty') && currentPath.includes('customer-warranty')));
+
+                    if (hasSubmenus) {
+                        html += `
+                            <div class="menu-treeview-group">
+                                <button type="button" onclick="toggleSubmenu('${menuId}')" class="sidebar-nav-item w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium ${isAnyChildActive ? 'text-white bg-white/10' : 'text-slate-300 hover:text-white'} transition group">
+                                    <div class="flex items-center gap-3 overflow-hidden">
+                                        <div class="w-8 h-8 rounded-lg ${isAnyChildActive ? 'bg-blue-600 shadow-xs text-white' : 'bg-slate-800 text-slate-400 group-hover:text-white'} flex items-center justify-center shrink-0">
+                                            <i data-lucide="${escapeHtml(m.icon || 'folder')}" class="w-4 h-4"></i>
+                                        </div>
+                                        <div class="overflow-hidden text-left">
+                                            <span class="block truncate ${isAnyChildActive ? 'font-bold text-white' : 'font-medium'} text-xs">${escapeHtml(m.title)}</span>
+                                        </div>
+                                    </div>
+                                    <i id="${menuId}-arrow" data-lucide="chevron-right" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0 ${isAnyChildActive ? 'rotate-90 text-blue-400' : ''}"></i>
+                                </button>
+                                <div id="${menuId}-submenu" class="space-y-1 pl-4 pr-1 mt-1 border-l-2 border-slate-800 ml-4 ${isAnyChildActive ? '' : 'hidden'}">
+                                    ${m.submenus.map(sub => {
+                                        const isSubActive = currentPath === sub.url || (sub.url && sub.url.includes('customer-warranty') && currentPath.includes('customer-warranty'));
+                                        const isSubDisabled = sub.is_disabled === 1;
+                                        if (isSubDisabled) {
+                                            return `<div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-500 cursor-not-allowed opacity-60"><i data-lucide="${escapeHtml(sub.icon || 'circle')}" class="w-2.5 h-2.5 text-slate-600 shrink-0"></i><span class="truncate">${escapeHtml(sub.title)}</span></div>`;
+                                        }
+                                        const subActiveStyle = isSubActive ? 'bg-blue-600 text-white font-bold shadow-xs' : 'text-slate-400 hover:text-white hover:bg-white/5';
+                                        return `<a href="${escapeHtml(sub.url)}" class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition ${subActiveStyle}">
+                                            <i data-lucide="${escapeHtml(sub.icon || 'circle')}" class="w-2.5 h-2.5 ${isSubActive ? 'text-white fill-white' : 'text-slate-400'} shrink-0"></i>
+                                            <span class="truncate">${escapeHtml(sub.title)}</span>
+                                        </a>`;
+                                    }).join('')}
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        const directActiveStyle = isDirectActive ? 'active text-white font-bold' : 'text-slate-300 hover:text-white';
+                        html += `
+                            <a href="${escapeHtml(m.url)}" class="sidebar-nav-item flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium ${directActiveStyle} transition group">
+                                <div class="flex items-center gap-3 overflow-hidden">
+                                    <div class="w-8 h-8 rounded-lg ${isDirectActive ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 group-hover:text-white'} flex items-center justify-center shrink-0">
+                                        <i data-lucide="${escapeHtml(m.icon || 'circle')}" class="w-4 h-4"></i>
+                                    </div>
+                                    <span class="truncate text-xs">${escapeHtml(m.title)}</span>
+                                </div>
+                            </a>
+                        `;
+                    }
+                });
+            }
+            container.innerHTML = html;
+            if (window.lucide) lucide.createIcons();
+        }
+
+        function toggleSubmenu(id) {
+            const sub = document.getElementById(`${id}-submenu`);
+            const arrow = document.getElementById(`${id}-arrow`);
+            if (!sub) return;
+            sub.classList.toggle('hidden');
+            if (arrow) arrow.classList.toggle('rotate-90');
+        }
+
+        // Fetch Warranty records
+        async function fetchWarranties() {
+            const tableBody = document.getElementById('warranty-table-body');
+            const emptyState = document.getElementById('empty-state');
+            const errorState = document.getElementById('error-state');
+            const refreshIcon = document.getElementById('refresh-icon');
+
+            if (refreshIcon) refreshIcon.classList.add('animate-spin');
+
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="py-12 text-center text-slate-400">
+                        <div class="inline-flex items-center gap-2">
+                            <div class="w-4 h-4 border-2 border-slate-400 border-t-blue-500 rounded-full animate-spin"></div>
+                            <span>Fetching warranty records...</span>
+                        </div>
+                    </td>
+                </tr>
+            `;
+            emptyState.classList.add('hidden');
+            errorState.classList.add('hidden');
+
+            const params = new URLSearchParams();
+            if (currentSearch) params.set('search', currentSearch);
+            if (currentStatus && currentStatus !== 'all') params.set('status', currentStatus);
+            if (currentDateFrom) params.set('date_from', currentDateFrom);
+            if (currentDateTo) params.set('date_to', currentDateTo);
+            params.set('sort_by', currentSortBy);
+            params.set('sort_order', currentSortOrder);
+            params.set('page', currentPage);
+            params.set('page_size', currentPageSize);
+
+            try {
+                const res = await fetch(`/api/customer-warranty?${params.toString()}`);
+                if (!res.ok) {
+                    throw new Error(`Server returned HTTP ${res.status}`);
+                }
+                const data = await res.json();
+                renderSummary(data.summary);
+                renderRecords(data.records, data.pagination);
+            } catch (err) {
+                console.error("Error fetching warranty records", err);
+                tableBody.innerHTML = '';
+                errorState.classList.remove('hidden');
+                document.getElementById('error-message-text').textContent = err.message || 'Failed to load warranty records.';
+            } finally {
+                if (refreshIcon) refreshIcon.classList.remove('animate-spin');
+                lucide.createIcons();
+            }
+        }
+
+        // Render Summary Cards
+        function renderSummary(summary) {
+            if (!summary) return;
+            document.getElementById('card-active-count').textContent = Number(summary.active || 0).toLocaleString();
+            document.getElementById('card-expiring-count').textContent = Number(summary.expiring_soon || 0).toLocaleString();
+            document.getElementById('card-expired-count').textContent = Number(summary.expired || 0).toLocaleString();
+            document.getElementById('card-unknown-count').textContent = Number(summary.unknown || 0).toLocaleString();
+        }
+
+        // Helper for status badge
+        function getStatusBadge(status, daysRemaining) {
+            const s = (status || 'Unknown').trim();
+            if (s === 'Active') {
+                const remainingText = daysRemaining != null ? `(${daysRemaining}d left)` : '';
+                return `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Active ${remainingText}
+                </span>`;
+            } else if (s === 'Expiring Soon') {
+                const remainingText = daysRemaining != null ? `(${daysRemaining}d left)` : '';
+                return `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                    <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span> Expiring Soon ${remainingText}
+                </span>`;
+            } else if (s === 'Expired') {
+                return `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                    <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span> Expired
+                </span>`;
+            } else if (s === 'Not Started') {
+                return `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                    <span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span> Not Started
+                </span>`;
+            } else {
+                return `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                    <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span> Unknown
+                </span>`;
+            }
+        }
+
+        // Render Table Records
+        function renderRecords(records, pagination) {
+            const tbody = document.getElementById('warranty-table-body');
+            const emptyState = document.getElementById('empty-state');
+            const counter = document.getElementById('records-counter-text');
+
+            if (!records || records.length === 0) {
+                tbody.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                counter.textContent = "Showing 0 records";
+                renderPagination({ total_records: 0, total_pages: 1, page: 1, has_prev: false, has_next: false });
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            counter.textContent = `Showing ${(pagination.page - 1) * pagination.page_size + 1}–${Math.min(pagination.page * pagination.page_size, pagination.total_records)} of ${pagination.total_records} records`;
+
+            let html = '';
+            records.forEach(r => {
+                const phoneHtml = r.phone 
+                    ? `<a href="tel:${r.dial_phone || r.phone}" class="inline-flex items-center gap-1 text-[11px] text-blue-600 hover:underline">
+                        <i data-lucide="phone" class="w-3 h-3"></i> ${r.phone}
+                       </a>`
+                    : `<span class="text-[11px] text-slate-400 italic">No phone</span>`;
+
+                const serialHtml = r.serial_number 
+                    ? `<span class="inline-flex items-center gap-1 font-mono text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                        <i data-lucide="hash" class="w-3 h-3 text-slate-400"></i> ${escapeHtml(r.serial_number)}
+                       </span>`
+                    : `<span class="text-xs text-slate-400">N/A</span>`;
+
+                const datesHtml = (r.warranty_start_date && r.warranty_end_date)
+                    ? `<div class="space-y-0.5">
+                        <div class="text-xs font-medium text-slate-800">${r.warranty_start_date} <span class="text-slate-400">to</span> ${r.warranty_end_date}</div>
+                        <div class="text-[10px] text-slate-400">${escapeHtml(r.warranty_source || 'Standard')}</div>
+                       </div>`
+                    : `<div class="text-xs text-slate-400 italic">Unknown dates</div>`;
+
+                const editBtnHtml = IS_ADMIN
+                    ? `<button type="button" onclick="openEditModal(${r.id})" class="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition" title="Admin Edit Warranty">
+                        <i data-lucide="edit-3" class="w-4 h-4"></i>
+                       </button>`
+                    : '';
+
+                html += `
+                    <tr class="hover:bg-slate-50/70 transition">
+                        <td class="py-3.5 px-4 sm:px-6">
+                            <div class="font-bold text-slate-900">${escapeHtml(r.customer_name)}</div>
+                            <div class="flex items-center gap-2 mt-0.5">
+                                <span class="text-[11px] font-mono text-slate-400">${r.customer_id}</span>
+                                <span class="text-slate-300">•</span>
+                                ${phoneHtml}
+                            </div>
+                        </td>
+                        <td class="py-3.5 px-4">
+                            <div class="font-medium text-slate-900">${escapeHtml(r.product_name)}</div>
+                            <div class="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
+                                <span>Invoice: <strong class="text-slate-600 font-mono">${r.sales_id}</strong></span>
+                                <span>•</span>
+                                <span>Sold: ${r.sales_date || 'N/A'}</span>
+                            </div>
+                        </td>
+                        <td class="py-3.5 px-4 whitespace-nowrap">
+                            ${serialHtml}
+                        </td>
+                        <td class="py-3.5 px-4 whitespace-nowrap">
+                            ${datesHtml}
+                        </td>
+                        <td class="py-3.5 px-4 whitespace-nowrap">
+                            ${getStatusBadge(r.warranty_status, r.days_remaining)}
+                        </td>
+                        <td class="py-3.5 px-4 sm:px-6 text-right whitespace-nowrap">
+                            <div class="flex items-center justify-end gap-1">
+                                <button type="button" onclick="viewDetails(${r.id})" class="px-2.5 py-1 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition" title="View Warranty Details">
+                                    Details
+                                </button>
+                                ${editBtnHtml}
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            tbody.innerHTML = html;
+            renderPagination(pagination);
+        }
+
+        // Render Pagination
+        function renderPagination(pagination) {
+            currentPage = pagination.page || 1;
+            totalPages = pagination.total_pages || 1;
+
+            document.getElementById('pagination-info').textContent = `Page ${currentPage} of ${totalPages} (${pagination.total_records || 0} total records)`;
+            document.getElementById('prev-page-btn').disabled = !pagination.has_prev;
+            document.getElementById('next-page-btn').disabled = !pagination.has_next;
+
+            const pageNumContainer = document.getElementById('page-numbers');
+            let pagesHtml = '';
+            const maxVisible = 5;
+            let start = Math.max(1, currentPage - 2);
+            let end = Math.min(totalPages, start + maxVisible - 1);
+            if (end - start < maxVisible - 1) {
+                start = Math.max(1, end - maxVisible + 1);
+            }
+
+            for (let i = start; i <= end; i++) {
+                const isActive = (i === currentPage);
+                pagesHtml += `
+                    <button type="button" onclick="goToPage(${i})" class="w-8 h-8 rounded-lg text-xs font-semibold ${isActive ? 'bg-blue-600 text-white' : 'border border-slate-200 bg-white hover:bg-slate-50 text-slate-700'} transition">
+                        ${i}
+                    </button>
+                `;
+            }
+            pageNumContainer.innerHTML = pagesHtml;
+        }
+
+        function goToPage(page) {
+            if (page < 1 || page > totalPages) return;
+            currentPage = page;
+            fetchWarranties();
+        }
+
+        // Filtering & Sorting
+        function filterByStatus(status) {
+            currentStatus = status;
+            currentPage = 1;
+
+            document.querySelectorAll('.status-pill').forEach(btn => {
+                const bStatus = btn.getAttribute('data-status');
+                if (bStatus === status) {
+                    btn.className = 'status-pill px-3 py-2 rounded-xl text-xs font-semibold bg-blue-600 text-white whitespace-nowrap transition';
+                } else {
+                    btn.className = 'status-pill px-3 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 whitespace-nowrap transition';
+                }
+            });
+
+            fetchWarranties();
+        }
+
+        function applyFilters() {
+            const sortVal = document.getElementById('sort-select').value.split(':');
+            currentSortBy = sortVal[0] || 'warranty_end_date';
+            currentSortOrder = sortVal[1] || 'asc';
+            currentDateFrom = document.getElementById('date-from').value;
+            currentDateTo = document.getElementById('date-to').value;
+            currentPage = 1;
+            fetchWarranties();
+        }
+
+        function clearDateFilters() {
+            document.getElementById('date-from').value = '';
+            document.getElementById('date-to').value = '';
+            applyFilters();
+        }
+
+        function resetAllFilters() {
+            document.getElementById('search-input').value = '';
+            currentSearch = '';
+            filterByStatus('all');
+            document.getElementById('sort-select').selectedIndex = 0;
+            clearDateFilters();
+        }
+
+        // View Details Modal
+        async function viewDetails(recordId) {
+            const modal = document.getElementById('details-modal');
+            const content = document.getElementById('modal-details-content');
+            modal.classList.remove('hidden');
+
+            content.innerHTML = `
+                <div class="py-12 text-center text-slate-400">
+                    <div class="w-5 h-5 border-2 border-slate-400 border-t-blue-500 rounded-full animate-spin mx-auto mb-2"></div>
+                    <span>Loading warranty record #${recordId}...</span>
+                </div>
+            `;
+
+            try {
+                const res = await fetch(`/api/customer-warranty/${recordId}`);
+                if (!res.ok) throw new Error("Could not retrieve warranty details.");
+                const data = await res.json();
+                const d = data.data;
+
+                document.getElementById('modal-title').textContent = `${d.customer.name}`;
+                document.getElementById('modal-subtitle').textContent = `Record #${d.id} • Invoice ${d.sale.sales_id}`;
+                document.getElementById('modal-audit-text').textContent = `Created: ${d.audit.created_at || 'N/A'} • Last updated by ${d.audit.updated_by_username || 'admin'}`;
+
+                const editBtn = document.getElementById('modal-edit-action-btn');
+                if (editBtn) {
+                    editBtn.onclick = () => {
+                        closeDetailsModal();
+                        openEditModal(d.id);
+                    };
+                }
+
+                content.innerHTML = `
+                    <!-- Status Banner -->
+                    <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                        <div>
+                            <span class="text-xs text-slate-500">Current Warranty Coverage</span>
+                            <div class="text-sm font-bold text-slate-900 mt-0.5">${d.warranty.source || 'Standard Terms'}</div>
+                        </div>
+                        <div>
+                            ${getStatusBadge(d.warranty.status, d.warranty.days_remaining)}
+                        </div>
+                    </div>
+
+                    <!-- Customer & Product 2-Column Info -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                        <!-- Customer Column -->
+                        <div class="p-4 rounded-xl border border-slate-200 bg-white space-y-2">
+                            <h4 class="font-bold text-slate-900 uppercase tracking-wider text-[11px] text-blue-600">Customer Profile</h4>
+                            <div>
+                                <span class="text-slate-400">Customer ID:</span>
+                                <span class="font-mono text-slate-700 ml-1">${d.customer.id}</span>
+                            </div>
+                            <div>
+                                <span class="text-slate-400">Contact Person:</span>
+                                <span class="text-slate-800 font-medium ml-1">${escapeHtml(d.customer.contact_person || 'N/A')}</span>
+                            </div>
+                            <div>
+                                <span class="text-slate-400">Phone:</span>
+                                <span class="text-slate-800 ml-1">${d.customer.phone || 'N/A'}</span>
+                            </div>
+                            <div>
+                                <span class="text-slate-400">Email:</span>
+                                <span class="text-slate-800 ml-1">${escapeHtml(d.customer.email || 'N/A')}</span>
+                            </div>
+                            <div>
+                                <span class="text-slate-400">Address:</span>
+                                <span class="text-slate-800 ml-1">${escapeHtml(d.customer.address || 'N/A')}</span>
+                            </div>
+                        </div>
+
+                        <!-- Product & Sales Column -->
+                        <div class="p-4 rounded-xl border border-slate-200 bg-white space-y-2">
+                            <h4 class="font-bold text-slate-900 uppercase tracking-wider text-[11px] text-blue-600">Product & Invoice</h4>
+                            <div>
+                                <span class="text-slate-400">Product Name:</span>
+                                <div class="font-semibold text-slate-800">${escapeHtml(d.product.name)}</div>
+                            </div>
+                            <div>
+                                <span class="text-slate-400">Category:</span>
+                                <span class="text-slate-700 ml-1">${escapeHtml(d.product.category)}</span>
+                            </div>
+                            <div>
+                                <span class="text-slate-400">Invoice Number:</span>
+                                <span class="font-mono text-slate-800 ml-1">${d.sale.sales_id}</span>
+                            </div>
+                            <div>
+                                <span class="text-slate-400">Sale Date:</span>
+                                <span class="text-slate-800 ml-1">${d.sale.sales_date || 'N/A'}</span>
+                            </div>
+                            <div>
+                                <span class="text-slate-400">Serial Number:</span>
+                                <span class="font-mono text-slate-800 ml-1">${escapeHtml(d.warranty.serial_number || 'N/A')}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Warranty Dates Card -->
+                    <div class="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3 text-xs">
+                        <h4 class="font-bold text-slate-900 uppercase tracking-wider text-[11px] text-slate-600">Warranty Coverage Period</h4>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <span class="text-slate-400 block">Start Date:</span>
+                                <strong class="text-slate-800 text-sm font-semibold">${d.warranty.start_date || 'Unknown (not specified)'}</strong>
+                            </div>
+                            <div>
+                                <span class="text-slate-400 block">End Date:</span>
+                                <strong class="text-slate-800 text-sm font-semibold">${d.warranty.end_date || 'Unknown (not specified)'}</strong>
+                            </div>
+                        </div>
+                        ${d.warranty.notes ? `
+                            <div class="pt-2 border-t border-slate-200">
+                                <span class="text-slate-400 block mb-1">Administrative Notes:</span>
+                                <p class="text-slate-700 bg-white p-2.5 rounded-lg border border-slate-200 italic leading-relaxed">${escapeHtml(d.warranty.notes)}</p>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+                lucide.createIcons();
+            } catch (err) {
+                content.innerHTML = `<div class="p-4 text-center text-rose-500 text-xs">${err.message}</div>`;
+            }
+        }
+
+        function closeDetailsModal() {
+            document.getElementById('details-modal').classList.add('hidden');
+        }
+
+        // Admin Add / Edit Modal
+        function openAddModal() {
+            const modal = document.getElementById('edit-modal');
+            if (!modal) return;
+            document.getElementById('edit-modal-title').textContent = "Add Customer Warranty";
+            document.getElementById('edit-modal-subtitle').textContent = "Create coverage record for customer hardware";
+            document.getElementById('form-record-id').value = "";
+            document.getElementById('form-customer-id').value = "";
+            document.getElementById('form-customer-id').readOnly = false;
+            document.getElementById('form-sales-id').value = "";
+            document.getElementById('form-product-id').value = "";
+            document.getElementById('form-serial').value = "";
+            document.getElementById('form-start-date').value = "";
+            document.getElementById('form-end-date').value = "";
+            document.getElementById('form-source').value = "Manufacturer Warranty";
+            document.getElementById('form-notes').value = "";
+            document.getElementById('form-date-error').classList.add('hidden');
+            document.getElementById('form-submit-text').textContent = "Save Warranty Record";
+            modal.classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        async function openEditModal(recordId) {
+            const modal = document.getElementById('edit-modal');
+            if (!modal) return;
+            document.getElementById('edit-modal-title').textContent = `Edit Warranty Record #${recordId}`;
+            document.getElementById('edit-modal-subtitle').textContent = "Update warranty duration and conditions";
+            document.getElementById('form-record-id').value = recordId;
+            document.getElementById('form-date-error').classList.add('hidden');
+            document.getElementById('form-submit-text').textContent = "Update Warranty Record";
+            modal.classList.remove('hidden');
+
+            try {
+                const res = await fetch(`/api/customer-warranty/${recordId}`);
+                if (!res.ok) throw new Error("Could not fetch record details");
+                const data = await res.json();
+                const d = data.data;
+
+                document.getElementById('form-customer-id').value = d.customer.id;
+                document.getElementById('form-customer-id').readOnly = true;
+                document.getElementById('form-sales-id').value = d.sale.sales_id;
+                document.getElementById('form-product-id').value = d.product.id;
+                document.getElementById('form-serial').value = d.warranty.serial_number || "";
+                document.getElementById('form-start-date').value = d.warranty.start_date || "";
+                document.getElementById('form-end-date').value = d.warranty.end_date || "";
+                document.getElementById('form-source').value = d.warranty.source || "";
+                document.getElementById('form-notes').value = d.warranty.notes || "";
+            } catch (err) {
+                showToast(err.message, "error");
+                closeEditModal();
+            }
+            lucide.createIcons();
+        }
+
+        function closeEditModal() {
+            const modal = document.getElementById('edit-modal');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        function validateFormDates() {
+            const start = document.getElementById('form-start-date').value;
+            const end = document.getElementById('form-end-date').value;
+            const errBox = document.getElementById('form-date-error');
+            const submitBtn = document.getElementById('form-submit-btn');
+
+            if (start && end && end < start) {
+                errBox.classList.remove('hidden');
+                submitBtn.disabled = true;
+                submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                return false;
+            } else {
+                errBox.classList.add('hidden');
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                return true;
+            }
+        }
+
+        async function handleWarrantyFormSubmit(e) {
+            e.preventDefault();
+            if (!validateFormDates()) return;
+
+            const recordId = document.getElementById('form-record-id').value;
+            const payload = {
+                customer_id: document.getElementById('form-customer-id').value.trim(),
+                sales_id: document.getElementById('form-sales-id').value.trim(),
+                product_id: document.getElementById('form-product-id').value.trim(),
+                serial_number: document.getElementById('form-serial').value.trim() || null,
+                warranty_start_date: document.getElementById('form-start-date').value || null,
+                warranty_end_date: document.getElementById('form-end-date').value || null,
+                warranty_source: document.getElementById('form-source').value.trim() || "Admin entry",
+                notes: document.getElementById('form-notes').value.trim() || null,
+            };
+
+            const isEdit = Boolean(recordId);
+            const url = isEdit ? `/api/customer-warranty/${recordId}` : `/api/customer-warranty`;
+            const method = isEdit ? 'PUT' : 'POST';
+
+            const submitBtn = document.getElementById('form-submit-btn');
+            submitBtn.disabled = true;
+
+            try {
+                const res = await fetch(url, {
+                    method: method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const result = await res.json();
+                if (!res.ok) {
+                    throw new Error(result.message || 'Operation failed');
+                }
+
+                showToast(isEdit ? "Warranty record updated successfully!" : "Warranty record created successfully!", "success");
+                closeEditModal();
+                fetchWarranties();
+            } catch (err) {
+                showToast(err.message, "error");
+            } finally {
+                submitBtn.disabled = false;
+            }
+        }
+
+        // Toast Helper
+        function showToast(msg, type = "info") {
+            const toast = document.getElementById('toast');
+            const msgEl = document.getElementById('toast-msg');
+            const icon = document.getElementById('toast-icon');
+
+            msgEl.textContent = msg;
+            if (type === "success") {
+                toast.className = 'fixed bottom-5 right-5 z-50 max-w-sm px-4 py-3 rounded-2xl shadow-xl border text-xs font-semibold flex items-center gap-3 bg-emerald-50 text-emerald-800 border-emerald-200 transition-all duration-300 translate-y-0 opacity-100';
+                icon.setAttribute('data-lucide', 'check-circle-2');
+            } else if (type === "error") {
+                toast.className = 'fixed bottom-5 right-5 z-50 max-w-sm px-4 py-3 rounded-2xl shadow-xl border text-xs font-semibold flex items-center gap-3 bg-rose-50 text-rose-800 border-rose-200 transition-all duration-300 translate-y-0 opacity-100';
+                icon.setAttribute('data-lucide', 'alert-circle');
+            } else {
+                toast.className = 'fixed bottom-5 right-5 z-50 max-w-sm px-4 py-3 rounded-2xl shadow-xl border text-xs font-semibold flex items-center gap-3 bg-slate-900 text-white border-slate-800 transition-all duration-300 translate-y-0 opacity-100';
+                icon.setAttribute('data-lucide', 'info');
+            }
+            lucide.createIcons();
+
+            setTimeout(() => {
+                toast.classList.add('translate-y-12', 'opacity-0');
+            }, 3500);
+        }
+
+        // HTML Escape Helper
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        // Initialization
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSidebarMenus();
+            fetchWarranties();
+
+            // Search debounce
+            let debounceTimer = null;
+            const searchInput = document.getElementById('search-input');
+            if (searchInput) {
+                searchInput.addEventListener('input', (e) => {
+                    clearTimeout(debounceTimer);
+                    debounceTimer = setTimeout(() => {
+                        currentSearch = e.target.value.trim();
+                        currentPage = 1;
+                        fetchWarranties();
+                    }, 350);
+                });
+            }
+        });
+    </script>
+    <script src="/static/ai_assistant.js"></script>
+</body>
+</html>

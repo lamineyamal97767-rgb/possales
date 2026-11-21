@@ -10,12 +10,40 @@ Tests cover:
 7. Security: No secrets or raw stack traces exposed on error.
 """
 
+import time
 import unittest
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
 from main import app
 import product_research_service
+from db.connection import get_connection
+
+
+def _delete_research_run(run_id):
+    if not run_id:
+        return
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            for table in (
+                "market_research_usage",
+                "market_research_sources",
+                "market_research_observations",
+                "market_research_runs",
+            ):
+                cur.execute(f"DELETE FROM {table} WHERE run_id = %s", (run_id,))
+        conn.commit()
+
+
+def _synthetic_search(query, max_results=5):
+    return {
+        "ok": True,
+        "results": [],
+        "answer": None,
+        "status_code": 200,
+        "error": None,
+        "error_code": None,
+    }
 
 
 class NewProductsControllerTests(unittest.TestCase):
@@ -44,6 +72,9 @@ class NewProductsControllerTests(unittest.TestCase):
         res_status = self.client.get("/api/new-products/research/some-job")
         self.assertEqual(res_status.status_code, 401)
 
+        res_categories = self.client.get("/api/new-products/categories")
+        self.assertEqual(res_categories.status_code, 401)
+
     # -------------------------------------------------------------------------
     # 2. Permission / Role Tests
     # -------------------------------------------------------------------------
@@ -63,11 +94,21 @@ class NewProductsControllerTests(unittest.TestCase):
         res_status = self.client.get("/api/new-products/research/some-job")
         self.assertEqual(res_status.status_code, 403)
 
+        res_categories = self.client.get("/api/new-products/categories")
+        self.assertEqual(res_categories.status_code, 403)
+
     @patch("main._get_request_user", return_value={"id": 6, "username": "analyst", "role": "User", "allowed_menus": ["new-products"]})
     def test_04_permitted_non_admin_can_view_report_but_not_trigger_research(self, mock_user):
         # Can view report
         res_report = self.client.get("/api/new-products/report")
         self.assertEqual(res_report.status_code, 200)
+
+        # Can load local categories
+        res_categories = self.client.get("/api/new-products/categories")
+        self.assertEqual(res_categories.status_code, 200)
+        categories = res_categories.json().get("categories", [])
+        self.assertTrue(categories)
+        self.assertTrue(all(item.get("category_id") for item in categories))
 
         # Cannot trigger research (Admin only)
         res_research = self.client.post("/api/new-products/research")
@@ -126,26 +167,41 @@ class NewProductsControllerTests(unittest.TestCase):
     # -------------------------------------------------------------------------
     @patch("main._get_request_user", return_value={"id": 1, "username": "admin", "role": "Admin"})
     def test_07_admin_can_start_research_and_check_status(self, mock_user):
-        # 1. Start research -> 202 Accepted
-        res = self.client.post("/api/new-products/research")
-        self.assertEqual(res.status_code, 202)
-        payload = res.json()
-        self.assertTrue(payload.get("success"))
-        self.assertIn("job_id", payload)
-        job_id = payload["job_id"]
+        job_id = None
+        with patch("db.market_research.get_active_run", return_value=None), \
+                patch("market_research_service.tavily_search", side_effect=_synthetic_search):
+            try:
+                # 1. Start research -> 202 Accepted without calling the live provider.
+                res = self.client.post("/api/new-products/research")
+                self.assertEqual(res.status_code, 202)
+                payload = res.json()
+                self.assertTrue(payload.get("success"))
+                self.assertIn("job_id", payload)
+                job_id = payload["job_id"]
 
-        # 2. Check status -> 200 OK
-        status_res = self.client.get(f"/api/new-products/research/{job_id}")
-        self.assertEqual(status_res.status_code, 200)
-        status_data = status_res.json()
-        self.assertTrue(status_data.get("success"))
-        self.assertEqual(status_data.get("job_id"), job_id)
-        self.assertIn("status", status_data.get("data", {}))
+                # 2. Wait for the synthetic background job to reach a terminal state.
+                status_data = None
+                for _ in range(100):
+                    status_res = self.client.get(f"/api/new-products/research/{job_id}")
+                    self.assertEqual(status_res.status_code, 200)
+                    status_data = status_res.json()
+                    status = str((status_data.get("data") or {}).get("status") or "").lower()
+                    if status in ("completed", "partial", "failed", "interrupted"):
+                        break
+                    time.sleep(0.05)
+                self.assertTrue(status_data.get("success"))
+                self.assertEqual(status_data.get("job_id"), job_id)
+                self.assertIn(
+                    str((status_data.get("data") or {}).get("status") or "").lower(),
+                    ("completed", "partial", "failed", "interrupted"),
+                )
 
-        # 3. Unknown job_id -> 404 Not Found
-        unknown_res = self.client.get("/api/new-products/research/non-existent-job-999")
-        self.assertEqual(unknown_res.status_code, 404)
-        self.assertIn("not found", unknown_res.json().get("message", "").lower())
+                # 3. Unknown job_id -> 404 Not Found
+                unknown_res = self.client.get("/api/new-products/research/non-existent-job-999")
+                self.assertEqual(unknown_res.status_code, 404)
+                self.assertIn("not found", unknown_res.json().get("message", "").lower())
+            finally:
+                _delete_research_run(job_id)
 
     # -------------------------------------------------------------------------
     # 5. Service / Template 503 "Feature Not Ready" & Page Rendering Tests

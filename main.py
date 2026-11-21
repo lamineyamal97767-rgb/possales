@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, Query
+from typing import Optional
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -27,6 +28,12 @@ from database import (
     get_ai_chat_history,
     get_session_user,
 )
+from datetime import date
+
+try:
+    import product_research_service
+except ImportError:
+    product_research_service = None
 
 logger = logging.getLogger(__name__)
 _LOGIN_ATTEMPTS = defaultdict(deque)
@@ -551,6 +558,1831 @@ async def deactivate_ink_relation_endpoint(relation_id: int, request: Request, p
         return JSONResponse(status_code=500, content={"success": False, "message": f"Server error: {e}"})
 
 
+# ==============================================================================
+# NEW PRODUCTS FROM WEBSITES (ROUTES & CONTROLLER)
+# ==============================================================================
+
+def _can_view_new_products(user: dict | None) -> bool:
+    """Check permission to access New Products using product_research_service contract."""
+    if not user:
+        return False
+    if product_research_service and hasattr(product_research_service, "can_view_new_products"):
+        try:
+            return bool(product_research_service.can_view_new_products(user))
+        except Exception:
+            logger.exception("Error checking can_view_new_products in service")
+    return str(user.get("role", "")).strip().lower() == "admin"
+
+
+@app.get("/new-products", response_class=HTMLResponse)
+@app.get("/menus/new-products", response_class=HTMLResponse)
+async def new_products_page(request: Request):
+    """Render New Products from Websites page."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/login", status_code=303)
+    user = _get_request_user(request)
+    if not _can_view_new_products(user):
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "message": "Permission denied: access to New Products required."},
+        )
+
+    template_file = BASE_DIR / "templates" / "new_products.html"
+    if not template_file.exists():
+        return JSONResponse(
+            status_code=503,
+            content={
+                "success": False,
+                "message": "503 Feature not ready: new_products.html template is not yet available.",
+                "pending_tasks": [
+                    "Create templates/new_products.html",
+                    "Design interactive tabs for Local, Market, and Comparison views",
+                    "Add research progress indicator widget",
+                ],
+            },
+        )
+    return templates.TemplateResponse(request, "new_products.html", {"request": request, "user": user})
+
+
+@app.get("/api/new-products/report")
+def get_new_products_report_endpoint(
+    request: Request,
+    view: str = "local",
+    start_date: str = "",
+    end_date: str = "",
+    category_id: str = "",
+    q: str = "",
+    brand: str = "",
+    market_category: str = "",
+):
+    """
+    Retrieve new products report.
+    Accepts:
+    - view: 'local' | 'market' | 'comparison'
+    - start_date, end_date (defaults to 30 days up to latest sales date if omitted)
+    - category_id, q (local catalog)
+    - brand, market_category (persisted market evidence)
+    """
+    user = _get_request_user(request)
+    if not user:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    if not _can_view_new_products(user):
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "message": "Permission denied: access to New Products required."},
+        )
+
+    clean_view = (view or "local").strip().lower()
+    if clean_view not in ("local", "market", "comparison"):
+        return JSONResponse(
+            status_code=422,
+            content={"success": False, "message": f"Invalid view '{view}'. Allowed values: local, market, comparison."},
+        )
+
+    s_date = start_date.strip() if start_date else None
+    e_date = end_date.strip() if end_date else None
+    parsed_start = None
+    parsed_end = None
+
+    if s_date:
+        try:
+            parsed_start = date.fromisoformat(s_date)
+        except ValueError:
+            return JSONResponse(
+                status_code=422,
+                content={"success": False, "message": f"Invalid start_date '{start_date}'. Must be in YYYY-MM-DD format."},
+            )
+
+    if e_date:
+        try:
+            parsed_end = date.fromisoformat(e_date)
+        except ValueError:
+            return JSONResponse(
+                status_code=422,
+                content={"success": False, "message": f"Invalid end_date '{end_date}'. Must be in YYYY-MM-DD format."},
+            )
+
+    if parsed_start and parsed_end and parsed_start > parsed_end:
+        return JSONResponse(
+            status_code=422,
+            content={"success": False, "message": "Invalid date range: start_date cannot be after end_date."},
+        )
+
+    if not product_research_service or not hasattr(product_research_service, "get_product_report"):
+        return JSONResponse(
+            status_code=503,
+            content={
+                "success": False,
+                "message": "503 Feature not ready: product_research_service.get_product_report is not available.",
+                "pending_tasks": [
+                    "Implement product_research_service.get_product_report",
+                    "Connect market comparison aggregation engine",
+                ],
+            },
+        )
+
+    try:
+        report = product_research_service.get_product_report({
+            "view": clean_view,
+            "start_date": s_date,
+            "end_date": e_date,
+            "category_id": category_id.strip() if category_id else None,
+            "q": q.strip() if q else None,
+            "brand": brand.strip() if brand else None,
+            "market_category": market_category.strip() if market_category else None,
+        })
+        return JSONResponse(status_code=200, content=report)
+    except ValueError as ve:
+        return JSONResponse(status_code=422, content={"success": False, "message": str(ve)})
+    except NotImplementedError as nie:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "success": False,
+                "message": f"503 Feature not ready: {nie}",
+                "pending_tasks": ["Complete product_research_service.get_product_report implementation"],
+            },
+        )
+    except Exception as exc:
+        logger.exception("Unexpected error in /api/new-products/report")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "An unexpected error occurred while generating the report."},
+        )
+
+
+@app.get("/api/new-products/categories")
+def get_new_products_categories_endpoint(request: Request):
+    """Return local category IDs and names for the New Products category filter."""
+    user = _get_request_user(request)
+    if not user:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    if not _can_view_new_products(user):
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "message": "Permission denied: access to New Products required."},
+        )
+    if not product_research_service or not hasattr(product_research_service, "get_categories"):
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "message": "503 Feature not ready: category lookup is not available."},
+        )
+    try:
+        return JSONResponse(
+            status_code=200,
+            content={"success": True, "categories": product_research_service.get_categories()},
+        )
+    except Exception:
+        logger.exception("Unexpected error in /api/new-products/categories")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "Could not load local categories."},
+        )
+
+
+@app.post("/api/new-products/research")
+async def start_new_products_research_endpoint(request: Request):
+    """Admin-only: Trigger an asynchronous product research job in the background."""
+    user = _get_request_user(request)
+    if not user:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    if str(user.get("role", "")).strip().lower() != "admin":
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "message": "Admin privileges required to start product research."},
+        )
+
+    if not product_research_service or not hasattr(product_research_service, "start_product_research"):
+        return JSONResponse(
+            status_code=503,
+            content={
+                "success": False,
+                "message": "503 Feature not ready: product_research_service.start_product_research is not available.",
+                "pending_tasks": [
+                    "Implement product_research_service.start_product_research",
+                    "Set up asynchronous background research worker",
+                ],
+            },
+        )
+
+    try:
+        user_id = user.get("id") or 1
+        job_id = product_research_service.start_product_research(user_id)
+        return JSONResponse(
+            status_code=202,
+            content={
+                "success": True,
+                "job_id": job_id,
+                "status": "pending",
+                "message": "Product research job queued in the background.",
+            },
+        )
+    except product_research_service.DuplicateResearchJobError as duplicate:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "success": False,
+                "job_id": duplicate.job_id,
+                "message": "A market research job is already running. Check its progress instead of starting a duplicate.",
+            },
+        )
+    except NotImplementedError as nie:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "success": False,
+                "message": f"503 Feature not ready: {nie}",
+                "pending_tasks": ["Implement background research engine"],
+            },
+        )
+    except ValueError as ve:
+        return JSONResponse(status_code=422, content={"success": False, "message": str(ve)})
+    except Exception as exc:
+        logger.exception("Unexpected error in /api/new-products/research")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "An unexpected error occurred while queuing the research job."},
+        )
+
+
+@app.get("/api/new-products/research/{job_id}")
+def get_new_products_research_status_endpoint(job_id: str, request: Request):
+    """Retrieve progress or results of a background research job."""
+    user = _get_request_user(request)
+    if not user:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    if not _can_view_new_products(user):
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "message": "Permission denied: access to New Products required."},
+        )
+
+    clean_job_id = (job_id or "").strip()
+    if not clean_job_id:
+        return JSONResponse(status_code=422, content={"success": False, "message": "Job ID cannot be empty."})
+
+    if not product_research_service or not hasattr(product_research_service, "get_product_research_status"):
+        return JSONResponse(
+            status_code=503,
+            content={
+                "success": False,
+                "message": "503 Feature not ready: product_research_service.get_product_research_status is not available.",
+                "pending_tasks": ["Implement product_research_service.get_product_research_status"],
+            },
+        )
+
+    try:
+        status_info = product_research_service.get_product_research_status(clean_job_id)
+        if status_info is None:
+            return JSONResponse(
+                status_code=404,
+                content={"success": False, "message": f"Research job '{clean_job_id}' not found."},
+            )
+        return JSONResponse(status_code=200, content={"success": True, "job_id": clean_job_id, "data": status_info})
+    except NotImplementedError as nie:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "success": False,
+                "message": f"503 Feature not ready: {nie}",
+                "pending_tasks": ["Complete product_research_service.get_product_research_status"],
+            },
+        )
+    except Exception as exc:
+        logger.exception(f"Unexpected error fetching status for job {clean_job_id}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "An unexpected error occurred while retrieving job status."},
+        )
+
+
+# ==============================================================================
+# REPORT 05: DORMANT CLIENTS (ROUTES & CONTROLLER)
+# ==============================================================================
+
+def _can_view_dormant_clients(user: dict | None) -> bool:
+    """Check permission to access Dormant Clients module."""
+    if not user:
+        return False
+    try:
+        if hasattr(database, "can_view_dormant_clients"):
+            return bool(database.can_view_dormant_clients(user))
+    except Exception:
+        logger.exception("Error checking can_view_dormant_clients")
+    return str(user.get("role", "")).strip().lower() == "admin"
+
+
+@app.get("/dormant-clients", response_class=HTMLResponse)
+@app.get("/menus/dormant-clients", response_class=HTMLResponse)
+async def dormant_clients_page(request: Request):
+    """Render Dormant Clients analytics page."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/login", status_code=303)
+    user = _get_request_user(request)
+    if not _can_view_dormant_clients(user):
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "message": "Permission denied: access to Dormant Clients required."},
+        )
+
+    template_file = BASE_DIR / "templates" / "dormant_clients.html"
+    if not template_file.exists():
+        return JSONResponse(
+            status_code=503,
+            content={
+                "success": False,
+                "message": "503 Feature not ready: dormant_clients.html template is not yet available.",
+                "pending_tasks": [
+                    "Create templates/dormant_clients.html",
+                    "Design KPI summary cards (Dormant, Insufficient data, Stale date alert)",
+                    "Implement customer cadence table with history view and phone call action",
+                ],
+            },
+        )
+    return templates.TemplateResponse(request, "dormant_clients.html", {"request": request, "user": user})
+
+
+@app.get("/api/dormant-clients")
+async def get_dormant_clients_report_endpoint(
+    request: Request,
+    q: Optional[str] = Query(None, description="Search query by customer name, phone, or ID"),
+    status: str = Query("all", description="Status filter: all, dormant, insufficient_data, active"),
+    sort_by: str = Query("days_overdue", description="Sort by: days_overdue, days_since_last, customer_name, last_purchase_date, avg_interval"),
+    sort_order: str = Query("desc", description="Sort order: asc or desc"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(25, ge=1, le=200, description="Page size"),
+):
+    """API returning dormant clients report, summary KPIs, and paginated records."""
+    if not is_authenticated(request):
+        return JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    user = _get_request_user(request)
+    if not _can_view_dormant_clients(user):
+        return JSONResponse(status_code=403, content={"success": False, "message": "Permission denied."})
+
+    clean_status = status.strip().lower()
+    valid_statuses = {"all", "dormant", "insufficient_data", "active"}
+    if clean_status not in valid_statuses:
+        return JSONResponse(
+            status_code=422,
+            content={"success": False, "message": f"Invalid status '{status}'. Must be one of {sorted(valid_statuses)}"},
+        )
+
+    clean_sort_by = sort_by.strip().lower()
+    valid_sort_fields = {"days_overdue", "days_since_last", "customer_name", "last_purchase_date", "avg_interval"}
+    if clean_sort_by not in valid_sort_fields:
+        return JSONResponse(
+            status_code=422,
+            content={"success": False, "message": f"Invalid sort_by '{sort_by}'. Must be one of {sorted(valid_sort_fields)}"},
+        )
+
+    clean_sort_order = sort_order.strip().lower()
+    if clean_sort_order not in {"asc", "desc"}:
+        return JSONResponse(
+            status_code=422,
+            content={"success": False, "message": "Invalid sort_order. Must be 'asc' or 'desc'."},
+        )
+
+    try:
+        report = database.get_dormant_clients_report(
+            search=q.strip() if q else None,
+            status_filter=clean_status,
+            sort_by=clean_sort_by,
+            sort_order=clean_sort_order,
+            page=page,
+            page_size=page_size,
+        )
+        return report
+    except Exception as exc:
+        logger.exception("Unexpected error in /api/dormant-clients")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "An unexpected error occurred while generating the dormant clients report."},
+        )
+
+
+@app.get("/api/dormant-clients/{customer_id}/history")
+async def get_dormant_client_history_endpoint(request: Request, customer_id: str):
+    """API returning detailed purchase history and cadence calculation for a specific customer."""
+    if not is_authenticated(request):
+        return JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    user = _get_request_user(request)
+    if not _can_view_dormant_clients(user):
+        return JSONResponse(status_code=403, content={"success": False, "message": "Permission denied."})
+
+    clean_cid = str(customer_id).strip()
+    if not clean_cid:
+        return JSONResponse(status_code=422, content={"success": False, "message": "Customer ID cannot be empty."})
+
+    try:
+        history = database.get_customer_purchase_history(clean_cid)
+        if not history:
+            return JSONResponse(
+                status_code=404,
+                content={"success": False, "message": f"Customer '{clean_cid}' not found or has no record."},
+            )
+        return history
+    except Exception as exc:
+        logger.exception(f"Unexpected error in /api/dormant-clients/{clean_cid}/history")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "An unexpected error occurred while retrieving customer purchase history."},
+        )
+
+
+# ==============================================================================
+# REPORT 06: CUSTOMER BUSINESS KYC (ROUTES & CONTROLLER)
+# ==============================================================================
+
+def _can_view_customer_kyc(user: dict | None) -> bool:
+    """Check permission to access Customer KYC module."""
+    if not user:
+        return False
+    try:
+        if hasattr(database, "can_view_customer_kyc"):
+            return bool(database.can_view_customer_kyc(user))
+    except Exception:
+        logger.exception("Error checking can_view_customer_kyc")
+    return str(user.get("role", "")).strip().lower() == "admin"
+
+
+@app.get("/menus/customer-kyc", response_class=HTMLResponse)
+@app.get("/customer-kyc", response_class=HTMLResponse)
+async def customer_kyc_page(request: Request):
+    """Render Customer Business KYC page."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/login", status_code=303)
+    user = _get_request_user(request)
+    if not _can_view_customer_kyc(user):
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "message": "Permission denied: access to Customer KYC required."},
+        )
+
+    template_file = BASE_DIR / "templates" / "customer_kyc.html"
+    if not template_file.exists():
+        return JSONResponse(
+            status_code=503,
+            content={
+                "success": False,
+                "message": "503 Feature not ready: customer_kyc.html template is not yet available.",
+                "pending_tasks": [
+                    "Create templates/customer_kyc.html",
+                    "Build customer directory with business type filter",
+                    "Add customer profile drawer/modal and admin business info editor",
+                ],
+            },
+        )
+    return templates.TemplateResponse(request, "customer_kyc.html", {"request": request, "user": user})
+
+
+@app.get("/api/customer-kyc/customers")
+async def get_customer_kyc_customers_endpoint(
+    request: Request,
+    q: Optional[str] = Query(None, description="Search by name, customer ID, or phone"),
+    business_type: Optional[str] = Query(None, description="Filter by business type"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(25, ge=1, le=200, description="Page size"),
+):
+    """API endpoint to search, filter, and paginate the customer KYC directory."""
+    if not is_authenticated(request):
+        return JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    user = _get_request_user(request)
+    if not _can_view_customer_kyc(user):
+        return JSONResponse(status_code=403, content={"success": False, "message": "Permission denied."})
+
+    try:
+        report = database.get_customer_kyc_directory(
+            search=q.strip() if q else None,
+            business_type=business_type.strip() if business_type else None,
+            page=page,
+            page_size=page_size,
+        )
+        return report
+    except Exception as exc:
+        logger.exception("Unexpected error in /api/customer-kyc/customers")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "An unexpected error occurred while fetching customer KYC directory."},
+        )
+
+
+@app.get("/api/customer-kyc/customers/{customer_id}")
+async def get_customer_kyc_detail_endpoint(request: Request, customer_id: str):
+    """API endpoint returning customer details, business profile, and purchase summary."""
+    if not is_authenticated(request):
+        return JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    user = _get_request_user(request)
+    if not _can_view_customer_kyc(user):
+        return JSONResponse(status_code=403, content={"success": False, "message": "Permission denied."})
+
+    clean_cid = str(customer_id).strip()
+    if not clean_cid:
+        return JSONResponse(status_code=422, content={"success": False, "message": "Customer ID cannot be empty."})
+
+    try:
+        detail = database.get_customer_kyc_detail(clean_cid)
+        if not detail:
+            return JSONResponse(
+                status_code=404,
+                content={"success": False, "message": f"Customer '{clean_cid}' was not found."},
+            )
+        return detail
+    except Exception as exc:
+        logger.exception(f"Unexpected error in /api/customer-kyc/customers/{clean_cid}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "An unexpected error occurred while retrieving customer profile."},
+        )
+
+
+@app.put("/api/customer-kyc/customers/{customer_id}")
+async def update_customer_kyc_profile_endpoint(request: Request, customer_id: str):
+    """Admin-only API endpoint to create or update the KYC business profile for a customer."""
+    if not is_authenticated(request):
+        return JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    user, err_resp = _require_admin(request)
+    if err_resp:
+        return err_resp
+
+    clean_cid = str(customer_id).strip()
+    if not clean_cid:
+        return JSONResponse(status_code=422, content={"success": False, "message": "Customer ID cannot be empty."})
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(status_code=422, content={"success": False, "message": "Invalid JSON payload."})
+
+    if not isinstance(body, dict):
+        return JSONResponse(status_code=422, content={"success": False, "message": "Request body must be a JSON object."})
+
+    b_name = str(body.get("business_name") or "").strip()
+    if len(b_name) > 200:
+        return JSONResponse(status_code=422, content={"success": False, "message": "Business name exceeds 200 characters limit."})
+
+    b_type = str(body.get("business_type") or "").strip()
+    if len(b_type) > 100:
+        return JSONResponse(status_code=422, content={"success": False, "message": "Business type exceeds 100 characters limit."})
+
+    c_person = str(body.get("contact_person") or "").strip()
+    if len(c_person) > 100:
+        return JSONResponse(status_code=422, content={"success": False, "message": "Contact person exceeds 100 characters limit."})
+
+    try:
+        result = database.save_customer_kyc_profile(clean_cid, body, user)
+        status_code = result.get("status_code", 200)
+        return JSONResponse(status_code=status_code, content=result)
+    except Exception as exc:
+        logger.exception(f"Unexpected error updating KYC profile for customer {clean_cid}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "An unexpected error occurred while updating the customer business profile."},
+        )
+
+
+# ==============================================================================
+# REPORT 08: CUSTOMER WARRANTY (ROUTES & CONTROLLER)
+# ==============================================================================
+
+def _can_view_customer_warranty(user: dict | None) -> bool:
+    """Check permission to access Customer Warranty module."""
+    if not user:
+        return False
+    try:
+        if hasattr(database, "can_view_customer_warranty"):
+            return bool(database.can_view_customer_warranty(user))
+    except Exception:
+        logger.exception("Error checking can_view_customer_warranty")
+    return str(user.get("role", "")).strip().lower() == "admin"
+
+
+@app.get("/menus/customer-warranty", response_class=HTMLResponse)
+@app.get("/customer-warranty", response_class=HTMLResponse)
+async def customer_warranty_page(request: Request):
+    """Render Customer Warranty page."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/login", status_code=303)
+    user = _get_request_user(request)
+    if not _can_view_customer_warranty(user):
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "message": "Permission denied: access to Customer Warranty required."},
+        )
+
+    template_file = BASE_DIR / "templates" / "customer_warranty.html"
+    if not template_file.exists():
+        return JSONResponse(
+            status_code=503,
+            content={
+                "success": False,
+                "message": "503 Feature not ready: customer_warranty.html template is not yet available.",
+                "pending_tasks": [
+                    "Create templates/customer_warranty.html",
+                    "Build customer warranty summary cards and table",
+                    "Add warranty modal and admin editor",
+                ],
+            },
+        )
+    return templates.TemplateResponse(request, "customer_warranty.html", {"request": request, "user": user})
+
+
+@app.get("/api/customer-warranty")
+async def get_customer_warranty_list_endpoint(
+    request: Request,
+    search: Optional[str] = Query(None, description="Search by customer, phone, product, invoice, or serial"),
+    q: Optional[str] = Query(None, description="Alias for search query"),
+    status: Optional[str] = Query(None, description="Filter by status (active, expiring_soon, expired, not_started, unknown, all)"),
+    date_from: Optional[str] = Query(None, description="Filter warranty end date from (YYYY-MM-DD)"),
+    date_to: Optional[str] = Query(None, description="Filter warranty end date to (YYYY-MM-DD)"),
+    sort_by: Optional[str] = Query("warranty_end_date", description="Sort field"),
+    sort_order: Optional[str] = Query("asc", description="Sort order (asc/desc)"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(25, ge=1, le=200, description="Page size"),
+    reference_date: Optional[str] = Query(None, description="Optional reference date (YYYY-MM-DD)"),
+):
+    """API endpoint to get warranty summary cards and filtered, paginated warranty records."""
+    if not is_authenticated(request):
+        return JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    user = _get_request_user(request)
+    if not _can_view_customer_warranty(user):
+        return JSONResponse(status_code=403, content={"success": False, "message": "Permission denied."})
+
+    search_query = (search or q or "").strip() or None
+    parsed_ref_date = None
+    if reference_date:
+        try:
+            from datetime import datetime as dt_cls
+            parsed_ref_date = dt_cls.strptime(reference_date.strip(), "%Y-%m-%d").date()
+        except ValueError:
+            return JSONResponse(status_code=422, content={"success": False, "message": "Invalid reference_date format. Expected YYYY-MM-DD."})
+
+    try:
+        report = database.get_warranty_records(
+            search=search_query,
+            status_filter=status.strip() if status else None,
+            date_from=date_from.strip() if date_from else None,
+            date_to=date_to.strip() if date_to else None,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            page=page,
+            page_size=page_size,
+            reference_date=parsed_ref_date,
+        )
+        return report
+    except Exception as exc:
+        logger.exception("Unexpected error in /api/customer-warranty")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "An unexpected error occurred while fetching warranty records."},
+        )
+
+
+@app.get("/api/customer-warranty/{record_id}")
+async def get_customer_warranty_detail_endpoint(
+    request: Request,
+    record_id: str,
+    reference_date: Optional[str] = Query(None, description="Optional reference date (YYYY-MM-DD)"),
+):
+    """API endpoint returning complete details of a single warranty record."""
+    if not is_authenticated(request):
+        return JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    user = _get_request_user(request)
+    if not _can_view_customer_warranty(user):
+        return JSONResponse(status_code=403, content={"success": False, "message": "Permission denied."})
+
+    try:
+        rid = int(record_id)
+    except (ValueError, TypeError):
+        return JSONResponse(status_code=422, content={"success": False, "message": "Invalid record ID. Must be an integer."})
+
+    parsed_ref_date = None
+    if reference_date:
+        try:
+            from datetime import datetime as dt_cls
+            parsed_ref_date = dt_cls.strptime(reference_date.strip(), "%Y-%m-%d").date()
+        except ValueError:
+            return JSONResponse(status_code=422, content={"success": False, "message": "Invalid reference_date format. Expected YYYY-MM-DD."})
+
+    try:
+        detail = database.get_warranty_record_detail(rid, reference_date=parsed_ref_date)
+        if not detail:
+            return JSONResponse(
+                status_code=404,
+                content={"success": False, "message": f"Warranty record #{rid} was not found."},
+            )
+        return {"success": True, "data": detail}
+    except Exception as exc:
+        logger.exception(f"Unexpected error in /api/customer-warranty/{record_id}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "An unexpected error occurred while retrieving warranty record."},
+        )
+
+
+@app.post("/api/customer-warranty")
+async def create_customer_warranty_endpoint(request: Request):
+    """Admin-only API endpoint to create a new warranty record."""
+    if not is_authenticated(request):
+        return JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    user, err_resp = _require_admin(request)
+    if err_resp:
+        return err_resp
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(status_code=422, content={"success": False, "message": "Invalid JSON payload."})
+
+    if not isinstance(body, dict):
+        return JSONResponse(status_code=422, content={"success": False, "message": "Request body must be a JSON object."})
+
+    if not str(body.get("customer_id") or "").strip():
+        return JSONResponse(status_code=422, content={"success": False, "message": "Customer ID is required."})
+    if not str(body.get("sales_id") or "").strip():
+        return JSONResponse(status_code=422, content={"success": False, "message": "Sales / Invoice ID is required."})
+    if not str(body.get("product_id") or "").strip():
+        return JSONResponse(status_code=422, content={"success": False, "message": "Product ID is required."})
+
+    try:
+        result = database.create_warranty_record(body, user)
+        status_code = result.get("status_code", 201)
+        return JSONResponse(status_code=status_code, content=result)
+    except ValueError as ve:
+        return JSONResponse(status_code=422, content={"success": False, "message": str(ve)})
+    except PermissionError as pe:
+        return JSONResponse(status_code=403, content={"success": False, "message": str(pe)})
+    except Exception as exc:
+        logger.exception("Unexpected error in POST /api/customer-warranty")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "An unexpected error occurred while creating warranty record."},
+        )
+
+
+@app.put("/api/customer-warranty/{record_id}")
+async def update_customer_warranty_endpoint(request: Request, record_id: str):
+    """Admin-only API endpoint to update an existing warranty record."""
+    if not is_authenticated(request):
+        return JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    user, err_resp = _require_admin(request)
+    if err_resp:
+        return err_resp
+
+    try:
+        rid = int(record_id)
+    except (ValueError, TypeError):
+        return JSONResponse(status_code=422, content={"success": False, "message": "Invalid record ID. Must be an integer."})
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(status_code=422, content={"success": False, "message": "Invalid JSON payload."})
+
+    if not isinstance(body, dict):
+        return JSONResponse(status_code=422, content={"success": False, "message": "Request body must be a JSON object."})
+
+    try:
+        result = database.update_warranty_record(rid, body, user)
+        status_code = result.get("status_code", 200)
+        return JSONResponse(status_code=status_code, content=result)
+    except ValueError as ve:
+        return JSONResponse(status_code=422, content={"success": False, "message": str(ve)})
+    except PermissionError as pe:
+        return JSONResponse(status_code=403, content={"success": False, "message": str(pe)})
+    except Exception as exc:
+        logger.exception(f"Unexpected error in PUT /api/customer-warranty/{record_id}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "An unexpected error occurred while updating warranty record."},
+        )
+
+
+
+# ==============================================================================
+# REPORT 09: CUSTOMER GIFTS (ROUTES & CONTROLLER)
+# ==============================================================================
+
+def _can_view_customer_gifts(user: dict | None) -> bool:
+    """Check permission to access Customer Gifts (session + Customer Gifts menu permission)."""
+    if not user:
+        return False
+    try:
+        return bool(database.can_view_customer_gifts(user))
+    except Exception:
+        logger.exception("Error checking can_view_customer_gifts")
+        return str(user.get("role", "")).strip().lower() == "admin"
+
+
+@app.get("/menus/customer-gifts", response_class=HTMLResponse)
+async def customer_gifts_page(request: Request):
+    """Render the Customer Gifts page (Report 09)."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/login", status_code=303)
+    user = _get_request_user(request)
+    if not _can_view_customer_gifts(user):
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "message": "Permission denied: access to Customer Gifts required."},
+        )
+    return templates.TemplateResponse(request, "customer_gifts.html", {"request": request, "user": user})
+
+
+@app.get("/api/customer-gifts/customers")
+async def get_customer_gifts_suggestions_endpoint(
+    request: Request,
+    search: Optional[str] = Query(None, description="Search by customer name, ID or phone"),
+    group: str = Query("all", description="Filter group: all, new, repeat"),
+    first_purchase_from: Optional[str] = Query(None, description="Filter first purchase date from (YYYY-MM-DD)"),
+    first_purchase_to: Optional[str] = Query(None, description="Filter first purchase date to (YYYY-MM-DD)"),
+    min_total_amount: Optional[str] = Query(None, description="Minimum total purchase amount"),
+    min_order_count: Optional[int] = Query(None, description="Minimum number of orders"),
+    new_customer_days: int = Query(90, ge=1, description="New customer window in days"),
+    sort_by: str = Query("total_purchase_amount", description="Sort field"),
+    sort_order: str = Query("desc", description="Sort order (asc/desc)"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(25, ge=1, le=200, description="Page size"),
+):
+    """API returning New Customers and Repeat Customers gift suggestions with filters."""
+    if not is_authenticated(request):
+        return JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    user = _get_request_user(request)
+    if not _can_view_customer_gifts(user):
+        return JSONResponse(status_code=403, content={"success": False, "message": "Permission denied: access to Customer Gifts required."})
+    try:
+        return database.get_customer_gifts_suggestions(
+            search=search, group=group,
+            first_purchase_from=first_purchase_from, first_purchase_to=first_purchase_to,
+            min_total_amount=min_total_amount, min_order_count=min_order_count,
+            new_customer_days=new_customer_days, sort_by=sort_by, sort_order=sort_order,
+            page=page, page_size=page_size,
+        )
+    except ValueError as ve:
+        return JSONResponse(status_code=422, content={"success": False, "message": str(ve)})
+    except Exception as exc:
+        logger.exception("Unexpected error in /api/customer-gifts/customers")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "An unexpected error occurred while generating customer gift suggestions."},
+        )
+
+
+@app.get("/api/customer-gifts/customers/{customer_id}")
+def get_customer_gift_details_endpoint(request: Request, customer_id: str):
+    """API returning customer details with purchase summary and previous gifts."""
+    if not is_authenticated(request):
+        return JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    user = _get_request_user(request)
+    if not _can_view_customer_gifts(user):
+        return JSONResponse(status_code=403, content={"success": False, "message": "Permission denied: access to Customer Gifts required."})
+    cid = str(customer_id).strip()
+    if not cid:
+        return JSONResponse(status_code=422, content={"success": False, "message": "Customer ID cannot be empty."})
+    try:
+        detail = database.get_customer_gift_details(cid)
+        if not detail:
+            return JSONResponse(
+                status_code=404,
+                content={"success": False, "message": f"Customer '{cid}' was not found."},
+            )
+        return detail
+    except Exception as exc:
+        logger.exception(f"Unexpected error in /api/customer-gifts/customers/{cid}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "An unexpected error occurred while retrieving customer gift details."},
+        )
+
+
+@app.get("/api/customer-gifts/gifts")
+def list_customer_gifts_endpoint(
+    request: Request,
+    search: Optional[str] = Query(None, description="Search by customer, gift name, or note"),
+    customer_id: Optional[str] = Query(None, description="Filter by customer ID"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(25, ge=1, le=200, description="Page size"),
+):
+    """API returning recorded customer gifts for the Gift History tab."""
+    if not is_authenticated(request):
+        return JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    user = _get_request_user(request)
+    if not _can_view_customer_gifts(user):
+        return JSONResponse(status_code=403, content={"success": False, "message": "Permission denied: access to Customer Gifts required."})
+    try:
+        return database.get_customer_gifts_list(search=search, customer_id=customer_id, page=page, page_size=page_size)
+    except Exception as exc:
+        logger.exception("Unexpected error in /api/customer-gifts/gifts")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "An unexpected error occurred while fetching recorded gifts."},
+        )
+
+
+@app.post("/api/customer-gifts/gifts")
+async def record_customer_gift_endpoint(request: Request):
+    """Admin-only API endpoint to record a customer gift (name, date, optional note)."""
+    if not is_authenticated(request):
+        return JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    user, err_resp = _require_admin(request)
+    if err_resp:
+        return err_resp
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(status_code=422, content={"success": False, "message": "Invalid JSON payload."})
+    if not isinstance(body, dict):
+        return JSONResponse(status_code=422, content={"success": False, "message": "Request body must be a JSON object."})
+
+    cid = str(body.get("customer_id") or "").strip()
+    gift_name = str(body.get("gift_name") or "").strip()
+    gift_date = body.get("gift_date")
+    note = body.get("note")
+
+    try:
+        result = database.record_customer_gift(cid, gift_name, gift_date, note, user)
+        status_code = result.get("status_code", 201)
+        return JSONResponse(status_code=status_code, content=result)
+    except ValueError as ve:
+        return JSONResponse(status_code=422, content={"success": False, "message": str(ve)})
+    except PermissionError as pe:
+        return JSONResponse(status_code=403, content={"success": False, "message": str(pe)})
+    except Exception as exc:
+        logger.exception("Unexpected error in POST /api/customer-gifts/gifts")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "An unexpected error occurred while recording the gift."},
+        )
+
+
+# ==============================================================================
+# REPORT 09: STOCK-OUT SALES ANALYSIS (ROUTES & CONTROLLER)
+# ==============================================================================
+
+def _can_view_stock_out_analysis(user: dict | None) -> bool:
+    """Check permission to access Stock-out Analysis (session + menu grant)."""
+    if not user:
+        return False
+    try:
+        return bool(database.can_view_stock_out_analysis(user))
+    except Exception:
+        logger.exception("Error checking can_view_stock_out_analysis")
+        return str(user.get("role", "")).strip().lower() == "admin"
+
+
+def _stock_out_filters(
+    start_date: str = "",
+    end_date: str = "",
+    search: str = "",
+    category_id: str = "",
+    stock_status: str = "all",
+    review_status: str = "all",
+    sort_by: str = "restock_priority",
+    sort_order: str = "desc",
+) -> dict:
+    return {
+        "start_date": start_date,
+        "end_date": end_date,
+        "search": search,
+        "category_id": category_id,
+        "stock_status": stock_status,
+        "review_status": review_status,
+        "sort_by": sort_by,
+        "sort_order": sort_order,
+    }
+
+
+@app.get("/menus/stock-out-analysis", response_class=HTMLResponse)
+async def stock_out_analysis_page(request: Request):
+    """Render the Stock-out Sales Analysis page."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/login", status_code=303)
+    user = _get_request_user(request)
+    if not _can_view_stock_out_analysis(user):
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "message": "Permission denied: access to Stock-out Analysis required."},
+        )
+    return templates.TemplateResponse(request, "stock_out_analysis.html", {"request": request, "user": user})
+
+
+@app.get("/api/stock-out-analysis/report")
+def stock_out_analysis_report_endpoint(
+    request: Request,
+    start_date: str = Query("", description="Selected period start (YYYY-MM-DD)"),
+    end_date: str = Query("", description="Selected period end (YYYY-MM-DD)"),
+    search: str = Query("", description="Search product name, ID or category"),
+    category_id: str = Query("", description="Category ID filter"),
+    stock_status: str = Query("all", description="all, in_stock, out_of_stock, negative_stock, unknown"),
+    review_status: str = Query("all", description="all, needs_restock, sales_decreased, out_of_stock, history_unavailable"),
+    sort_by: str = Query("restock_priority", description="Sort field"),
+    sort_order: str = Query("desc", description="Sort order (asc/desc)"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(25, ge=1, le=200, description="Page size"),
+):
+    """Return summary, filtered product rows, stock observations and pagination."""
+    if not is_authenticated(request):
+        return JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    user = _get_request_user(request)
+    if not _can_view_stock_out_analysis(user):
+        return JSONResponse(status_code=403, content={"success": False, "message": "Permission denied: access to Stock-out Analysis required."})
+    try:
+        return database.get_stock_out_report(
+            _stock_out_filters(
+                start_date, end_date, search, category_id,
+                stock_status, review_status, sort_by, sort_order,
+            ),
+            page=page,
+            page_size=page_size,
+        )
+    except ValueError as exc:
+        return JSONResponse(status_code=422, content={"success": False, "message": str(exc)})
+    except Exception:
+        logger.exception("Unexpected error in /api/stock-out-analysis/report")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "An unexpected error occurred while generating the stock-out analysis report."},
+        )
+
+
+@app.get("/api/stock-out-analysis/products/{product_id}")
+def stock_out_analysis_product_detail_endpoint(
+    request: Request,
+    product_id: str,
+    start_date: str = Query("", description="Selected period start (YYYY-MM-DD)"),
+    end_date: str = Query("", description="Selected period end (YYYY-MM-DD)"),
+):
+    """Return one product's sales trend, current stock and dated observations."""
+    if not is_authenticated(request):
+        return JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    user = _get_request_user(request)
+    if not _can_view_stock_out_analysis(user):
+        return JSONResponse(status_code=403, content={"success": False, "message": "Permission denied: access to Stock-out Analysis required."})
+    pid = str(product_id or "").strip()
+    if not pid:
+        return JSONResponse(status_code=422, content={"success": False, "message": "Product ID is required."})
+    try:
+        detail = database.get_stock_out_product_detail(
+            pid, _stock_out_filters(start_date=start_date, end_date=end_date)
+        )
+        if not detail:
+            return JSONResponse(
+                status_code=404,
+                content={"success": False, "message": f"Product '{pid}' was not found."},
+            )
+        return detail
+    except ValueError as exc:
+        return JSONResponse(status_code=422, content={"success": False, "message": str(exc)})
+    except Exception:
+        logger.exception(f"Unexpected error in /api/stock-out-analysis/products/{pid}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "An unexpected error occurred while retrieving stock-out product details."},
+        )
+
+
+@app.get("/api/stock-out-analysis/report.xlsx")
+def stock_out_analysis_report_xlsx(
+    request: Request,
+    start_date: str = Query("", description="Selected period start (YYYY-MM-DD)"),
+    end_date: str = Query("", description="Selected period end (YYYY-MM-DD)"),
+    search: str = Query("", description="Search product name, ID or category"),
+    category_id: str = Query("", description="Category ID filter"),
+    stock_status: str = Query("all", description="all, in_stock, out_of_stock, negative_stock, unknown"),
+    review_status: str = Query("all", description="all, needs_restock, sales_decreased, out_of_stock, history_unavailable"),
+    sort_by: str = Query("restock_priority", description="Sort field"),
+    sort_order: str = Query("desc", description="Sort order (asc/desc)"),
+):
+    """Export the same filtered stock-out rows as the on-screen report."""
+    if not is_authenticated(request):
+        return JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    user = _get_request_user(request)
+    if not _can_view_stock_out_analysis(user):
+        return JSONResponse(status_code=403, content={"success": False, "message": "Permission denied: access to Stock-out Analysis required."})
+    try:
+        report = database.get_stock_out_report_export(
+            _stock_out_filters(
+                start_date, end_date, search, category_id,
+                stock_status, review_status, sort_by, sort_order,
+            )
+        )
+        from openpyxl import Workbook
+        book = Workbook()
+        sheet = book.active
+        sheet.title = "Stock-out Analysis"
+        _append_xlsx_row(sheet, [
+            "Product ID", "Product", "Category", "Current Stock", "Stock Status",
+            "Stock Observed At", "Selected Quantity", "Previous Quantity",
+            "Change %", "History Availability", "Review Recommendation",
+        ])
+        for row in report.get("rows", []):
+            change = row.get("change_percent")
+            _append_xlsx_row(sheet, [
+                row.get("product_id"),
+                row.get("product_name"),
+                row.get("category_name"),
+                row.get("current_stock") if row.get("current_stock") is not None else "Unknown",
+                row.get("stock_status_label"),
+                row.get("stock_observed_at") or "Unknown",
+                row.get("selected_quantity"),
+                row.get("previous_quantity"),
+                f"{change:.2f}%" if change is not None else "N/A",
+                row.get("history_status_label"),
+                row.get("review_label"),
+            ])
+        output = io.BytesIO()
+        book.save(output)
+        output.seek(0)
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=stock-out-analysis.xlsx"},
+        )
+    except ValueError as exc:
+        return JSONResponse(status_code=422, content={"success": False, "message": str(exc)})
+    except ImportError:
+        return JSONResponse(status_code=503, content={"success": False, "message": "Excel export dependency is not installed."})
+    except Exception:
+        logger.exception("Unexpected error in /api/stock-out-analysis/report.xlsx")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "An unexpected error occurred while exporting the stock-out analysis report."},
+        )
+
+
+# ==============================================================================
+# 11. EQUIVALENT MODELS
+# ==============================================================================
+
+def _can_view_equivalent_models(user: dict | None) -> bool:
+    """Check permission to access Equivalent Models (session + menu grant)."""
+    if not user:
+        return False
+    try:
+        return bool(database.can_view_equivalent_models(user))
+    except Exception:
+        logger.exception("Error checking can_view_equivalent_models")
+        return str(user.get("role", "")).strip().lower() == "admin"
+
+
+def _equivalent_actor(request: Request):
+    user, error_resp = _require_admin(request)
+    if error_resp:
+        return None, None, error_resp
+    username = str(user.get("username") or "admin")
+    user_id = user.get("id")
+    ip_address = request.client.host if request.client else ""
+    return user, {"username": username, "user_id": user_id, "ip_address": ip_address}, None
+
+
+@app.get("/equivalent-models", response_class=HTMLResponse)
+@app.get("/menus/equivalent-models", response_class=HTMLResponse)
+async def equivalent_models_page(request: Request):
+    """Render the Equivalent Models report page."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/login", status_code=303)
+    user = _get_request_user(request)
+    if not _can_view_equivalent_models(user):
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "message": "Permission denied: access to Equivalent Models required."},
+        )
+    return templates.TemplateResponse(request, "equivalent_models.html", {"request": request, "user": user})
+
+
+@app.get("/api/equivalent-models/bootstrap")
+def equivalent_models_bootstrap(request: Request):
+    """Return page metadata, filter options and current user permissions."""
+    if not is_authenticated(request):
+        return JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    user = _get_request_user(request)
+    if not _can_view_equivalent_models(user):
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "message": "Permission denied: access to Equivalent Models required."},
+        )
+    try:
+        database.init_equivalent_models_table()
+        return {
+            "success": True,
+            "user": {
+                "id": user.get("id"),
+                "username": user.get("username"),
+                "role": user.get("role"),
+                "is_admin": str(user.get("role", "")).strip().lower() == "admin",
+            },
+            "metadata": database.get_equivalent_models_metadata(),
+            "categories": database.get_equivalent_model_categories(),
+        }
+    except Exception:
+        logger.exception("Could not load Equivalent Models bootstrap")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "Could not load Equivalent Models data."},
+        )
+
+
+@app.get("/api/equivalent-models/products")
+def equivalent_models_search_products(
+    request: Request,
+    q: str = Query("", description="Search by product name, ID, description, category or brand"),
+    category_id: str = Query("", description="Optional category ID filter"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(25, ge=1, le=200, description="Page size"),
+):
+    """Search catalog products; the catalog has no model column."""
+    if not is_authenticated(request):
+        return JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    user = _get_request_user(request)
+    if not _can_view_equivalent_models(user):
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "message": "Permission denied: access to Equivalent Models required."},
+        )
+    try:
+        return database.search_equivalent_model_products(
+            q, category_id=category_id, page=page, page_size=page_size
+        )
+    except ValueError as exc:
+        return JSONResponse(status_code=422, content={"success": False, "message": str(exc)})
+    except Exception:
+        logger.exception("Equivalent Models product search failed")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "Could not search products."},
+        )
+
+
+@app.get("/api/equivalent-models/alternatives")
+def equivalent_models_alternatives(
+    request: Request,
+    source_product_id: str = Query("", description="Source product ID"),
+    verification_status: str = Query("active", description="active, verified, needs_review, inactive or all"),
+    category_id: str = Query("", description="Optional category ID filter"),
+    stock_status: str = Query("all", description="all, in_stock, out_of_stock or unknown"),
+    search: str = Query("", description="Search alternatives"),
+    sort_by: str = Query("last_updated", description="last_updated, product_name, price, stock or status"),
+    sort_order: str = Query("desc", description="asc or desc"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(25, ge=1, le=200, description="Page size"),
+):
+    """List directional alternatives for a source product."""
+    if not is_authenticated(request):
+        return JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    user = _get_request_user(request)
+    if not _can_view_equivalent_models(user):
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "message": "Permission denied: access to Equivalent Models required."},
+        )
+    source_id = str(source_product_id or "").strip()
+    if not source_id:
+        return JSONResponse(status_code=422, content={"success": False, "message": "Source product ID is required."})
+    try:
+        result = database.list_alternative_relationships(
+            source_id,
+            verification_status=verification_status,
+            category_id=category_id,
+            stock_status=stock_status,
+            search=search,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            page=page,
+            page_size=page_size,
+        )
+        if result is None:
+            return JSONResponse(
+                status_code=404,
+                content={"success": False, "message": f"Source product '{source_id}' was not found."},
+            )
+        return result
+    except ValueError as exc:
+        return JSONResponse(status_code=422, content={"success": False, "message": str(exc)})
+    except Exception:
+        logger.exception("Equivalent Models alternatives failed")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "Could not load alternatives."},
+        )
+
+
+@app.get("/api/equivalent-models/relationships/{relationship_id}")
+def equivalent_models_relationship_detail(relationship_id: int, request: Request):
+    """Return one relationship and its database-backed comparison."""
+    if not is_authenticated(request):
+        return JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    user = _get_request_user(request)
+    if not _can_view_equivalent_models(user):
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "message": "Permission denied: access to Equivalent Models required."},
+        )
+    try:
+        detail = database.get_equivalent_model_relationship_detail(relationship_id)
+        if not detail:
+            return JSONResponse(status_code=404, content={"success": False, "message": "Relationship not found."})
+        return detail
+    except Exception:
+        logger.exception("Equivalent Models detail failed")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "Could not load relationship details."},
+        )
+
+
+@app.post("/api/equivalent-models/relationships")
+async def equivalent_models_create_relationship(request: Request):
+    """Admin-only: record one directional alternative relationship."""
+    _user, actor, error_resp = _equivalent_actor(request)
+    if error_resp:
+        return error_resp
+    try:
+        payload = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={"success": False, "message": "Invalid JSON body."})
+    if not isinstance(payload, dict):
+        return JSONResponse(status_code=422, content={"success": False, "message": "JSON body must be an object."})
+    try:
+        result = database.add_equivalent_relationship(
+            payload.get("source_product_id", ""),
+            payload.get("alternative_product_id", ""),
+            payload.get("reason", ""),
+            source=payload.get("source", "Admin entry"),
+            username=actor["username"],
+            user_id=actor["user_id"],
+            ip_address=actor["ip_address"],
+        )
+        return {"success": True, **result, "message": "Relationship recorded for review."}
+    except ValueError as exc:
+        return JSONResponse(status_code=422, content={"success": False, "message": str(exc)})
+    except Exception:
+        logger.exception("Equivalent Models create failed")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "Could not record the relationship."},
+        )
+
+
+@app.put("/api/equivalent-models/relationships/{relationship_id}")
+async def equivalent_models_update_relationship(relationship_id: int, request: Request):
+    """Admin-only: update the evidence fields of a relationship."""
+    _user, actor, error_resp = _equivalent_actor(request)
+    if error_resp:
+        return error_resp
+    try:
+        payload = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={"success": False, "message": "Invalid JSON body."})
+    if not isinstance(payload, dict):
+        return JSONResponse(status_code=422, content={"success": False, "message": "JSON body must be an object."})
+    try:
+        updated = database.update_equivalent_relationship(
+            relationship_id,
+            reason=payload.get("reason"),
+            source=payload.get("source"),
+            username=actor["username"],
+            user_id=actor["user_id"],
+            ip_address=actor["ip_address"],
+        )
+        if not updated:
+            return JSONResponse(status_code=404, content={"success": False, "message": "Relationship not found."})
+        return {"success": True, "relationship": updated, "message": "Relationship updated."}
+    except ValueError as exc:
+        return JSONResponse(status_code=422, content={"success": False, "message": str(exc)})
+    except Exception:
+        logger.exception("Equivalent Models update failed")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "Could not update the relationship."},
+        )
+
+
+@app.post("/api/equivalent-models/relationships/{relationship_id}/verify")
+async def equivalent_models_verify_relationship(relationship_id: int, request: Request):
+    """Admin-only: explicitly verify a relationship with evidence."""
+    _user, actor, error_resp = _equivalent_actor(request)
+    if error_resp:
+        return error_resp
+    payload = {}
+    try:
+        raw = await request.body()
+        if raw:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                return JSONResponse(status_code=422, content={"success": False, "message": "JSON body must be an object."})
+    except Exception:
+        return JSONResponse(status_code=400, content={"success": False, "message": "Invalid JSON body."})
+    try:
+        updated = database.verify_equivalent_relationship(
+            relationship_id,
+            reason=payload.get("reason"),
+            source=payload.get("source"),
+            username=actor["username"],
+            user_id=actor["user_id"],
+            ip_address=actor["ip_address"],
+        )
+        if not updated:
+            return JSONResponse(status_code=404, content={"success": False, "message": "Relationship not found."})
+        return {"success": True, "relationship": updated, "message": "Relationship verified."}
+    except ValueError as exc:
+        return JSONResponse(status_code=422, content={"success": False, "message": str(exc)})
+    except Exception:
+        logger.exception("Equivalent Models verify failed")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "Could not verify the relationship."},
+        )
+
+
+@app.post("/api/equivalent-models/relationships/{relationship_id}/deactivate")
+def equivalent_models_deactivate_relationship(relationship_id: int, request: Request):
+    """Admin-only: deactivate a relationship without deleting its evidence."""
+    _user, actor, error_resp = _equivalent_actor(request)
+    if error_resp:
+        return error_resp
+    try:
+        updated = database.deactivate_equivalent_relationship(
+            relationship_id,
+            username=actor["username"],
+            user_id=actor["user_id"],
+            ip_address=actor["ip_address"],
+        )
+        if not updated:
+            return JSONResponse(status_code=404, content={"success": False, "message": "Relationship not found."})
+        return {"success": True, "relationship": updated, "message": "Relationship deactivated."}
+    except ValueError as exc:
+        return JSONResponse(status_code=422, content={"success": False, "message": str(exc)})
+    except Exception:
+        logger.exception("Equivalent Models deactivate failed")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "Could not deactivate the relationship."},
+        )
+
+
+# ==============================================================================
+# 12. OLD STOCK & BUYERS
+# ==============================================================================
+
+
+def _can_view_old_stock_buyers(user: dict | None) -> bool:
+    """Check permission to access Old Stock & Buyers (session + menu grant)."""
+    if not user:
+        return False
+    try:
+        return bool(database.can_view_old_stock_buyers(user))
+    except Exception:
+        logger.exception("Error checking can_view_old_stock_buyers")
+        return str(user.get("role", "")).strip().lower() == "admin"
+
+
+@app.get("/old-stock-buyers", response_class=HTMLResponse)
+@app.get("/menus/old-stock-buyers", response_class=HTMLResponse)
+async def old_stock_buyers_page(request: Request):
+    """Render the Old Stock & Buyers report page."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/login", status_code=303)
+    user = _get_request_user(request)
+    if not _can_view_old_stock_buyers(user):
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "message": "Permission denied: access to Old Stock & Buyers required."},
+        )
+    return templates.TemplateResponse(request, "old_stock_buyers.html", {"request": request, "user": user})
+
+
+@app.get("/api/old-stock-buyers/bootstrap")
+def old_stock_buyers_bootstrap(request: Request):
+    """Return page metadata, filter options and current user permissions."""
+    if not is_authenticated(request):
+        return JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    user = _get_request_user(request)
+    if not _can_view_old_stock_buyers(user):
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "message": "Permission denied: access to Old Stock & Buyers required."},
+        )
+    try:
+        return {
+            "success": True,
+            "user": {
+                "id": user.get("id"),
+                "username": user.get("username"),
+                "role": user.get("role"),
+                "is_admin": str(user.get("role", "")).strip().lower() == "admin",
+            },
+            "metadata": database.get_old_stock_buyers_metadata(),
+            "categories": database.get_old_stock_categories(),
+        }
+    except Exception:
+        logger.exception("Could not load Old Stock & Buyers bootstrap")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "Could not load Old Stock & Buyers data."},
+        )
+
+
+@app.get("/api/old-stock-buyers/products")
+def old_stock_buyers_products(
+    request: Request,
+    q: str = Query("", description="Search by product name, ID, category or brand"),
+    category_id: str = Query("", description="Optional category ID filter"),
+    min_age_days: Optional[int] = Query(None, description="Minimum stock age in days"),
+    stock_filter: str = Query("all", description="all, known, or unknown"),
+    sort_by: str = Query("stock_age", description="stock_age, product_name, stock_quantity or category"),
+    sort_order: str = Query("desc", description="asc or desc"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(25, ge=1, le=200, description="Page size"),
+):
+    """List old stock products with stock age information."""
+    if not is_authenticated(request):
+        return JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    user = _get_request_user(request)
+    if not _can_view_old_stock_buyers(user):
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "message": "Permission denied: access to Old Stock & Buyers required."},
+        )
+    try:
+        return database.search_products_with_stock_age(
+            q,
+            category_id=category_id,
+            min_age_days=min_age_days,
+            stock_filter=stock_filter,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            page=page,
+            page_size=page_size,
+        )
+    except ValueError as exc:
+        return JSONResponse(status_code=422, content={"success": False, "message": str(exc)})
+    except Exception:
+        logger.exception("Old Stock & Buyers product search failed")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "Could not search old stock products."},
+        )
+
+
+@app.get("/api/old-stock-buyers/buyers")
+def old_stock_buyers_buyers(
+    request: Request,
+    product_id: str = Query("", description="Product ID to look up buyers for"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(25, ge=1, le=200, description="Page size"),
+):
+    """Return buyers for a specific product."""
+    if not is_authenticated(request):
+        return JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    user = _get_request_user(request)
+    if not _can_view_old_stock_buyers(user):
+        return JSONResponse(
+            status_code=403,
+            content={"success": False, "message": "Permission denied: access to Old Stock & Buyers required."},
+        )
+    try:
+        return database.get_product_buyers(product_id, page=page, page_size=page_size)
+    except Exception:
+        logger.exception("Old Stock & Buyers buyer lookup failed")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": "Could not load buyers."},
+        )
+
+
+# ==============================================================================
+# 13. CUSTOMER PAYMENT RISK
+# ==============================================================================
+
+_PAYMENT_RISK_DENIED = "Permission denied: access to Customer Payment Risk required."
+_PAYMENT_RISK_UNAVAILABLE = "Customer payment data is temporarily unavailable. Please try again."
+
+
+def _can_view_customer_payment_risk(user: dict | None) -> bool:
+    """Check permission to access Customer Payment Risk (session + menu grant)."""
+    if not user:
+        return False
+    try:
+        return bool(database.can_view_customer_payment_risk(user))
+    except Exception as exc:
+        logger.error("Customer Payment Risk permission check failed (%s)", type(exc).__name__)
+        return str(user.get("role", "")).strip().lower() == "admin"
+
+
+def _payment_risk_guard(request: Request):
+    """Return (user, None) when allowed, otherwise (None, error response)."""
+    if not is_authenticated(request):
+        return None, JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    user = _get_request_user(request)
+    if not _can_view_customer_payment_risk(user):
+        return None, JSONResponse(status_code=403, content={"success": False, "message": _PAYMENT_RISK_DENIED})
+    return user, None
+
+
+def _safe_report_error(exc: Exception, report: str, action: str, unavailable: str) -> JSONResponse:
+    """Map report errors to safe responses. Only the exception type is logged, never its message or data."""
+    if isinstance(exc, database.ReportInputError):
+        return JSONResponse(status_code=422, content={"success": False, "message": str(exc)})
+    if isinstance(exc, database.CustomerNotFoundError):
+        return JSONResponse(status_code=404, content={"success": False, "message": "Customer not found."})
+    logger.error("%s %s failed (%s)", report, action, type(exc).__name__)
+    return JSONResponse(status_code=500, content={"success": False, "message": unavailable})
+
+
+def _payment_risk_error(exc: Exception, action: str) -> JSONResponse:
+    return _safe_report_error(exc, "Customer Payment Risk", action, _PAYMENT_RISK_UNAVAILABLE)
+
+
+@app.get("/customer-payment-risk", response_class=HTMLResponse)
+@app.get("/menus/customer-payment-risk", response_class=HTMLResponse)
+async def customer_payment_risk_page(request: Request):
+    """Render the Customer Payment Risk report page."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/login", status_code=303)
+    user = _get_request_user(request)
+    if not _can_view_customer_payment_risk(user):
+        return JSONResponse(status_code=403, content={"success": False, "message": _PAYMENT_RISK_DENIED})
+    return templates.TemplateResponse(request, "customer_payment_risk.html", {"request": request, "user": user})
+
+
+@app.get("/api/customer-payment-risk/bootstrap")
+def customer_payment_risk_bootstrap(request: Request):
+    """Return labels, filter options and the current user's role."""
+    user, denied = _payment_risk_guard(request)
+    if denied:
+        return denied
+    try:
+        options = database.get_customer_payment_risk_filter_options()
+        return {
+            "success": True,
+            "user": {
+                "username": user.get("username"),
+                "role": user.get("role"),
+                "is_admin": str(user.get("role", "")).strip().lower() == "admin",
+            },
+            "metadata": database.get_customer_payment_risk_metadata(),
+            "customer_types": options["customer_types"],
+        }
+    except Exception as exc:
+        return _payment_risk_error(exc, "bootstrap")
+
+
+@app.get("/api/customer-payment-risk/customers")
+def customer_payment_risk_customers(
+    request: Request,
+    q: str = Query("", description="Search by customer name, ID or phone"),
+    overdue_status: str = Query("all", description="all, overdue, not_overdue, unknown or no_invoices"),
+    customer_type: str = Query("", description="Optional customer type, e.g. DEALER"),
+    activity: str = Query("with_invoices", description="with_invoices or all"),
+    sort_by: str = Query("overdue_amount", description="overdue_amount, days_overdue, unpaid_total, invoiced_total, customer_name, customer_id, last_payment_date or last_invoice_date"),
+    sort_order: str = Query("desc", description="asc or desc"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(25, ge=1, le=100, description="Page size"),
+    refresh: bool = Query(False, description="Reload from the database instead of the 60-second cache"),
+):
+    """Return the filtered customer payment report with summary cards."""
+    _, denied = _payment_risk_guard(request)
+    if denied:
+        return denied
+    try:
+        return database.get_customer_payment_risk_report(
+            refresh=refresh, q=q, overdue_status=overdue_status, customer_type=customer_type,
+            activity=activity, sort_by=sort_by, sort_order=sort_order, page=page, page_size=page_size,
+        )
+    except Exception as exc:
+        return _payment_risk_error(exc, "report")
+
+
+@app.get("/api/customer-payment-risk/customer")
+def customer_payment_risk_customer(
+    request: Request,
+    customer_id: str = Query("", description="Customer ID (CS_ID)"),
+    invoice_page: int = Query(1, ge=1),
+    payment_page: int = Query(1, ge=1),
+    return_page: int = Query(1, ge=1),
+):
+    """Return one customer's payment summary with invoice, payment and return history."""
+    _, denied = _payment_risk_guard(request)
+    if denied:
+        return denied
+    try:
+        return database.get_customer_payment_risk_detail(
+            customer_id, invoice_page=invoice_page, payment_page=payment_page, return_page=return_page,
+        )
+    except Exception as exc:
+        return _payment_risk_error(exc, "detail")
+
+
+# ==============================================================================
+# 14. CUSTOMER PROFITABILITY
+# ==============================================================================
+
+_PROFITABILITY_DENIED = "Permission denied: access to Customer Profitability required."
+_PROFITABILITY_UNAVAILABLE = "Profitability data is temporarily unavailable. Please try again."
+
+
+def _can_view_customer_profitability(user: dict | None) -> bool:
+    """Check permission to access Customer Profitability (session + menu grant)."""
+    if not user:
+        return False
+    try:
+        return bool(database.can_view_customer_profitability(user))
+    except Exception as exc:
+        logger.error("Customer Profitability permission check failed (%s)", type(exc).__name__)
+        return str(user.get("role", "")).strip().lower() == "admin"
+
+
+def _profitability_guard(request: Request):
+    """Return (user, None) when allowed, otherwise (None, error response)."""
+    if not is_authenticated(request):
+        return None, JSONResponse(status_code=401, content={"success": False, "message": "Authentication required."})
+    user = _get_request_user(request)
+    if not _can_view_customer_profitability(user):
+        return None, JSONResponse(status_code=403, content={"success": False, "message": _PROFITABILITY_DENIED})
+    return user, None
+
+
+def _profitability_error(exc: Exception, action: str) -> JSONResponse:
+    return _safe_report_error(exc, "Customer Profitability", action, _PROFITABILITY_UNAVAILABLE)
+
+
+@app.get("/customer-profitability", response_class=HTMLResponse)
+@app.get("/menus/customer-profitability", response_class=HTMLResponse)
+async def customer_profitability_page(request: Request):
+    """Render the Customer Profitability report page."""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/login", status_code=303)
+    user = _get_request_user(request)
+    if not _can_view_customer_profitability(user):
+        return JSONResponse(status_code=403, content={"success": False, "message": _PROFITABILITY_DENIED})
+    return templates.TemplateResponse(request, "customer_profitability.html", {"request": request, "user": user})
+
+
+@app.get("/api/customer-profitability/bootstrap")
+def customer_profitability_bootstrap(request: Request):
+    """Return labels, default dates and the range of recorded sales."""
+    user, denied = _profitability_guard(request)
+    if denied:
+        return denied
+    try:
+        return {
+            "success": True,
+            "user": {"role": user.get("role"), "is_admin": str(user.get("role", "")).strip().lower() == "admin"},
+            "metadata": database.get_customer_profitability_metadata(),
+            "data_range": database.get_customer_profitability_data_range(),
+        }
+    except Exception as exc:
+        return _profitability_error(exc, "bootstrap")
+
+
+def _profitability_report(request: Request, view: str, **filters):
+    _, denied = _profitability_guard(request)
+    if denied:
+        return denied
+    try:
+        return database.get_customer_profitability_report(view=view, **filters)
+    except Exception as exc:
+        return _profitability_error(exc, f"{view} report")
+
+
+@app.get("/api/customer-profitability/customers")
+def customer_profitability_customers(
+    request: Request,
+    start_date: str = Query("", description="YYYY-MM-DD; defaults to 90 days before end_date"),
+    end_date: str = Query("", description="YYYY-MM-DD; defaults to today"),
+    q: str = Query("", description="Search by customer name, ID or phone"),
+    customer_id: str = Query("", description="Optional customer ID"),
+    profit_status: str = Query("all", description="all, known or unknown"),
+    sort_by: str = Query("gross_profit", description="gross_profit, gross_margin, net_sales, sales, returns, cost_coverage, invoice_count, name or id"),
+    sort_order: str = Query("desc", description="asc or desc"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    refresh: bool = Query(False, description="Reload from the database instead of the 60-second cache"),
+):
+    """Gross profit by customer for the selected period."""
+    return _profitability_report(request, "customers", start_date=start_date, end_date=end_date, q=q,
+                                 customer_id=customer_id, profit_status=profit_status, sort_by=sort_by,
+                                 sort_order=sort_order, page=page, page_size=page_size, refresh=refresh)
+
+
+@app.get("/api/customer-profitability/products")
+def customer_profitability_products(
+    request: Request,
+    start_date: str = Query("", description="YYYY-MM-DD; defaults to 90 days before end_date"),
+    end_date: str = Query("", description="YYYY-MM-DD; defaults to today"),
+    q: str = Query("", description="Search by product name, ID or category"),
+    customer_id: str = Query("", description="Optional customer ID to limit products to one customer"),
+    profit_status: str = Query("all", description="all, known or unknown"),
+    sort_by: str = Query("gross_profit", description="gross_profit, gross_margin, net_sales, sales, returns, cost_coverage, invoice_count, name or id"),
+    sort_order: str = Query("desc", description="asc or desc"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    refresh: bool = Query(False, description="Reload from the database instead of the 60-second cache"),
+):
+    """Gross profit by product for the selected period, optionally for one customer."""
+    return _profitability_report(request, "products", start_date=start_date, end_date=end_date, q=q,
+                                 customer_id=customer_id, profit_status=profit_status, sort_by=sort_by,
+                                 sort_order=sort_order, page=page, page_size=page_size, refresh=refresh)
+
+
 @app.get("/api/dashboard/full-overview")
 def get_dashboard_full_overview(request: Request):
     """Return all high-level business intelligence data in one single response."""
@@ -705,6 +2537,11 @@ def _warm_ai_context():
 def _startup_warm_ai_context():
     """Pre-build the analytics snapshot so the first AI request is fast."""
     threading.Thread(target=_warm_ai_context, daemon=True).start()
+    if product_research_service and hasattr(product_research_service, "initialize_market_research"):
+        try:
+            product_research_service.initialize_market_research()
+        except Exception:
+            logger.exception("Could not initialize market research storage")
 
 
 def _sse(data: dict) -> str:

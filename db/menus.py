@@ -62,8 +62,10 @@ def init_menus_table():
                     VALUES 
                     (%s, 'Product Peak Period', '', '/peak-period', 'circle', 'Analytics Modules', 1, 1, 0, 0),
                     (%s, 'Customer Affinity', '', '/menus/customer-affinity', 'circle', 'Analytics Modules', 2, 1, 0, 0),
-                    (%s, 'Ink Dependency', '', '/menus/ink', 'circle', 'Analytics Modules', 3, 1, 0, 0)
-                """, (parent_1, parent_1, parent_1))
+                    (%s, 'Ink Dependency', '', '/menus/ink', 'circle', 'Analytics Modules', 3, 1, 0, 0),
+                    (%s, 'Stock-out Analysis', '', '/menus/stock-out-analysis', 'package-x', 'Analytics Modules', 5, 1, 0, 0),
+                    (%s, 'Equivalent Models', '', '/equivalent-models', 'repeat', 'Analytics Modules', 6, 1, 0, 0)
+                """, (parent_1, parent_1, parent_1, parent_1, parent_1))
 
                 # 2. Main Menu: Client Operations (Parent)
                 cur.execute("""
@@ -78,8 +80,9 @@ def init_menus_table():
                     VALUES 
                     (%s, 'Dormant Clients', '', '#', 'circle', 'Analytics Modules', 1, 1, 1, 0),
                     (%s, 'High-Due Alert', '', '#', 'circle', 'Analytics Modules', 2, 1, 1, 0),
-                    (%s, 'Client Profitability', '', '#', 'circle', 'Analytics Modules', 3, 1, 1, 0)
-                """, (parent_2, parent_2, parent_2))
+                    (%s, 'Client Profitability', '', '#', 'circle', 'Analytics Modules', 3, 1, 1, 0),
+                    (%s, 'Customer Gifts', '', '/menus/customer-gifts', 'gift', 'Analytics Modules', 4, 1, 0, 0)
+                """, (parent_2, parent_2, parent_2, parent_2))
 
                 # 3. Menus (Parent Management Menu)
                 cur.execute("""
@@ -108,6 +111,66 @@ def init_menus_table():
                 SET url = '/menus/ink', is_disabled = 0 
                 WHERE title = 'Ink Dependency'
             """)
+
+            # Customer Gifts (Report 09) menu must point at the page route.
+            cur.execute("""
+                UPDATE sidebar_menus
+                SET url = '/menus/customer-gifts', icon = 'gift', is_active = 1, is_disabled = 0
+                WHERE title = 'Customer Gifts'
+            """)
+
+            # Stock-out Analysis lives under Product Intelligence and must point
+            # at its page route. The existing menu ID and grants are preserved.
+            cur.execute("""
+                SELECT id FROM sidebar_menus
+                WHERE parent_id IS NULL AND title = 'Product Intelligence'
+                ORDER BY id LIMIT 1
+            """)
+            product_intelligence = cur.fetchone()
+            if product_intelligence and product_intelligence.get("id"):
+                cur.execute("""
+                    UPDATE sidebar_menus
+                    SET parent_id = %s,
+                        title = 'Stock-out Analysis',
+                        url = '/menus/stock-out-analysis',
+                        icon = 'package-x',
+                        section = 'Analytics Modules',
+                        menu_order = 5,
+                        is_active = 1,
+                        is_disabled = 0
+                    WHERE LOWER(title) IN ('stock-out analysis', 'stock out analysis')
+                       OR LOWER(url) IN ('stock-out-analysis', '/menus/stock-out-analysis', 'stock_out_analysis')
+                """, (int(product_intelligence["id"]),))
+
+                # Report 11: Equivalent Models is a Product Intelligence submenu.
+                # Update the existing row so its ID and any existing grants survive;
+                # only insert when the menu is genuinely missing.
+                cur.execute("""
+                    SELECT id FROM sidebar_menus
+                    WHERE LOWER(title) IN ('equivalent models', 'equivalent model')
+                       OR LOWER(url) IN ('equivalent-models', '/equivalent-models', 'equivalent_models')
+                    ORDER BY id LIMIT 1
+                """)
+                equivalent_menu = cur.fetchone()
+                if equivalent_menu and equivalent_menu.get("id"):
+                    cur.execute("""
+                        UPDATE sidebar_menus
+                        SET parent_id = %s,
+                            title = 'Equivalent Models',
+                            url = '/equivalent-models',
+                            icon = 'repeat',
+                            section = 'Analytics Modules',
+                            menu_order = 6,
+                            is_active = 1,
+                            is_disabled = 0
+                        WHERE id = %s
+                    """, (int(product_intelligence["id"]), int(equivalent_menu["id"])))
+                else:
+                    cur.execute("""
+                        INSERT INTO sidebar_menus
+                            (parent_id, title, subtitle, url, icon, section, menu_order, is_active, is_disabled, target_blank)
+                        VALUES (%s, 'Equivalent Models', '', '/equivalent-models', 'repeat', 'Analytics Modules', 6, 1, 0, 0)
+                    """, (int(product_intelligence["id"]),))
             conn.commit()
     _menus_initialized = True
 

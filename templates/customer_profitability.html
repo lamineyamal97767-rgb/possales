@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Profitability — Printer Analytics</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .tabular { font-variant-numeric: tabular-nums; }
+        .sidebar-scroll::-webkit-scrollbar { width: 4px; }
+        .sidebar-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+        .sidebar-nav-item { transition: all 0.15s ease; }
+        .sidebar-nav-item:hover { background: rgba(255,255,255,0.08); }
+        .sidebar-nav-item.active { background: rgba(59, 130, 246, 0.25); border-right: 3px solid #3b82f6; }
+        @media (max-width: 1023px) {
+            .sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 40; display: none; }
+            .sidebar-overlay.active { display: block; }
+        }
+        .summary-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+        .summary-card:hover { transform: translateY(-1px); box-shadow: 0 10px 20px -12px rgba(15, 23, 42, 0.25); }
+        :focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+        .unknown-chip { display: inline-flex; align-items: center; gap: 0.25rem; border-radius: 9999px; background: #f1f5f9;
+                        padding: 0.125rem 0.5rem; font-size: 10px; font-weight: 600; color: #475569; white-space: nowrap; }
+        .tab-button[aria-selected="true"] { background: #fff; color: #0f172a; box-shadow: 0 1px 2px rgba(15,23,42,0.12); }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex">
+    <a href="#report-main" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:rounded-lg focus:bg-white focus:px-3 focus:py-2 focus:text-xs focus:font-semibold focus:shadow">Skip to report</a>
+
+    <div id="sidebar-overlay" class="sidebar-overlay lg:hidden" onclick="toggleSidebar()"></div>
+
+    <aside id="sidebar" class="fixed top-0 left-0 z-50 h-screen w-64 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-white flex flex-col transition-all duration-300 ease-in-out -translate-x-full lg:translate-x-0 shadow-2xl" aria-label="Main navigation">
+        <div class="h-16 flex items-center gap-3 px-5 border-b border-white/10 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20 text-white font-bold">
+                <i data-lucide="printer" class="w-5 h-5"></i>
+            </div>
+            <div>
+                <h1 class="text-sm font-bold tracking-tight text-white leading-none">Printer Analytics</h1>
+                <p class="text-[10px] text-slate-400 font-medium mt-0.5">Fleet Ops & Intelligence</p>
+            </div>
+        </div>
+        <nav class="flex-1 overflow-y-auto sidebar-scroll px-3 py-4 space-y-1" id="sidebar-nav-container">
+            <div class="px-3 py-4 text-xs text-slate-400 flex items-center gap-2">
+                <div class="w-4 h-4 border-2 border-slate-500 border-t-blue-500 rounded-full animate-spin"></div>
+                <span>Loading menus...</span>
+            </div>
+        </nav>
+        <div class="p-3 border-t border-white/10 shrink-0 bg-slate-950/40">
+            <div class="flex items-center justify-between px-2 py-1.5 text-xs text-slate-400">
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span class="font-medium text-slate-300">Database Live</span>
+                </div>
+                <span class="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-white/10 text-slate-300">
+                    {{ user.role if user and user.role else 'Admin' }}
+                </span>
+            </div>
+            <a href="/logout" class="mt-2 w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/10 transition">
+                <i data-lucide="log-out" class="w-4 h-4"></i>
+                <span>Sign Out</span>
+            </a>
+        </div>
+    </aside>
+
+    <div id="main-content" class="transition-all duration-300 ease-in-out lg:ml-64 flex-1 flex flex-col min-h-screen min-w-0">
+        <header class="sticky top-0 z-30 h-16 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-4 sm:px-6 flex items-center justify-between shadow-sm">
+            <div class="flex items-center gap-3 min-w-0">
+                <button type="button" onclick="toggleSidebar()" class="p-2 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 transition flex items-center justify-center" aria-label="Toggle navigation menu">
+                    <i data-lucide="menu" class="w-5 h-5"></i>
+                </button>
+                <nav class="flex items-center gap-2 text-xs font-medium text-slate-500 min-w-0" aria-label="Breadcrumb">
+                    <a href="/menus/dashboard" class="hover:text-blue-600 transition">Dashboard</a>
+                    <i data-lucide="chevron-right" class="w-3.5 h-3.5 shrink-0"></i>
+                    <span class="hidden sm:inline">Client Operations</span>
+                    <i data-lucide="chevron-right" class="w-3.5 h-3.5 shrink-0 hidden sm:inline"></i>
+                    <span class="text-slate-800 font-bold truncate" aria-current="page">Customer Profitability</span>
+                </nav>
+            </div>
+            <button type="button" id="refresh-button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 border border-slate-200 hover:bg-slate-100 transition" aria-label="Refresh customer profitability report">
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                <span class="hidden sm:inline">Refresh</span>
+            </button>
+        </header>
+
+        <main id="report-main" class="flex-1 px-4 sm:px-6 py-6 max-w-7xl mx-auto w-full" tabindex="-1">
+            <div class="flex items-start gap-3 mb-4">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20 shrink-0">
+                    <i data-lucide="banknote" class="w-5 h-5 text-white"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold text-slate-800">Customer Profitability</h2>
+                    <p class="text-xs text-slate-500 mt-0.5 max-w-3xl">Sales, returns, cost of sales and gross profit by customer and by product, calculated from the cost recorded on each sale.</p>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 mb-4 flex items-start gap-3" role="note">
+                <i data-lucide="info" class="w-4 h-4 text-amber-700 mt-0.5 shrink-0"></i>
+                <p id="disclaimer-text" class="text-[11px] leading-relaxed text-amber-900">
+                    Gross profit is net sales minus the recorded cost of the goods sold. It is not net profit: operating expenses, commissions, delivery and other overheads are not deducted. Gross profit is shown only when every sale and return in the row has a recorded price and cost; otherwise it is shown as Unknown.
+                </p>
+            </div>
+
+            <section class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 sm:p-5 mb-4" aria-labelledby="period-heading">
+                <div class="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+                    <h3 id="period-heading" class="text-sm font-bold text-slate-800">Period and customer</h3>
+                    <p class="text-[11px] text-slate-500">Recorded sales: <span id="data-range" class="font-semibold text-slate-700">—</span></p>
+                </div>
+                <form id="period-form" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end" onsubmit="return false;">
+                    <div>
+                        <label for="preset-filter" class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Period</label>
+                        <select id="preset-filter" class="w-full px-3 py-2.5 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                            <option value="last_30">Last 30 days</option>
+                            <option value="last_90" selected>Last 90 days</option>
+                            <option value="this_year">This year</option>
+                            <option value="last_365">Last 12 months</option>
+                            <option value="all">All recorded sales</option>
+                            <option value="custom">Custom dates</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="start-date" class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">From</label>
+                        <input id="start-date" type="date" required class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                    </div>
+                    <div>
+                        <label for="end-date" class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">To</label>
+                        <input id="end-date" type="date" required class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                    </div>
+                    <div class="lg:col-span-2">
+                        <label for="customer-id-input" class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Customer ID (optional)</label>
+                        <div class="flex gap-2">
+                            <input id="customer-id-input" type="text" maxlength="10" autocomplete="off" placeholder="e.g. CS00001185"
+                                   class="flex-1 min-w-0 px-3 py-2.5 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                            <button type="button" id="customer-apply" class="rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100">Apply</button>
+                        </div>
+                    </div>
+                </form>
+                <p id="period-error" class="hidden mt-2 text-xs text-rose-700" role="alert"></p>
+                <div id="customer-chip" class="hidden mt-3"></div>
+            </section>
+
+            <section aria-labelledby="summary-heading" class="mb-4">
+                <div class="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+                    <h3 id="summary-heading" class="text-sm font-bold text-slate-800">Summary for <span id="period-label">the selected period</span></h3>
+                    <p class="text-[11px] text-slate-500"><span id="summary-scope">—</span></p>
+                </div>
+                <div id="summary-cards" class="grid grid-cols-2 lg:grid-cols-5 gap-3" aria-live="polite" aria-busy="true"></div>
+                <div id="unavailable-banner" class="hidden mt-3 rounded-xl border border-slate-200 bg-white px-4 py-3 flex items-start gap-3" role="status">
+                    <i data-lucide="database-zap" class="w-4 h-4 text-slate-500 mt-0.5 shrink-0"></i>
+                    <div class="text-[11px] leading-relaxed text-slate-600">
+                        <p id="unavailable-text"></p>
+                        <ul id="unknown-reasons" class="mt-1 list-disc pl-4 space-y-0.5"></ul>
+                    </div>
+                </div>
+            </section>
+
+            <section class="bg-white rounded-xl border border-slate-200 shadow-sm" aria-labelledby="results-heading">
+                <div class="px-4 sm:px-5 pt-4 flex flex-wrap items-center justify-between gap-3">
+                    <h3 id="results-heading" class="text-sm font-bold text-slate-800">Gross profit breakdown</h3>
+                    <div role="tablist" aria-label="Breakdown" class="inline-flex rounded-lg bg-slate-100 p-1">
+                        <button type="button" role="tab" id="tab-customers" data-view="customers" aria-controls="results-region" aria-selected="true" class="tab-button rounded-md px-3 py-1.5 text-xs font-semibold text-slate-600">By customer</button>
+                        <button type="button" role="tab" id="tab-products" data-view="products" aria-controls="results-region" aria-selected="false" tabindex="-1" class="tab-button rounded-md px-3 py-1.5 text-xs font-semibold text-slate-600">By product</button>
+                    </div>
+                </div>
+                <form id="filters-form" class="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end" role="search" onsubmit="return false;">
+                    <div class="lg:col-span-2">
+                        <label for="search-input" id="search-label" class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Search customers</label>
+                        <div class="relative">
+                            <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                            <input id="search-input" type="search" maxlength="100" autocomplete="off" placeholder="Name, customer ID or phone..."
+                                   class="w-full pl-10 pr-3 py-2.5 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                        </div>
+                    </div>
+                    <div>
+                        <label for="status-filter" class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Gross profit</label>
+                        <select id="status-filter" class="w-full px-3 py-2.5 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                            <option value="all">All rows</option>
+                            <option value="known">Gross profit known</option>
+                            <option value="unknown">Gross profit Unknown</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="sort-filter" class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Sort by</label>
+                        <select id="sort-filter" class="w-full px-3 py-2.5 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                            <option value="gross_profit:desc">Gross profit: high to low</option>
+                            <option value="gross_profit:asc">Gross profit: low to high</option>
+                            <option value="gross_margin:desc">Gross margin: high to low</option>
+                            <option value="gross_margin:asc">Gross margin: low to high</option>
+                            <option value="net_sales:desc">Net sales: high to low</option>
+                            <option value="returns:desc">Returns: high to low</option>
+                            <option value="cost_coverage:asc">Cost coverage: lowest first</option>
+                            <option value="invoice_count:desc">Invoices: most first</option>
+                            <option value="name:asc">Name: A-Z</option>
+                            <option value="id:asc">ID</option>
+                        </select>
+                    </div>
+                </form>
+
+                <div id="results-region" role="tabpanel" aria-labelledby="tab-customers" class="px-4 sm:px-5 pb-4">
+                    <div id="results-loading" class="hidden py-10 text-center" role="status">
+                        <span class="inline-flex items-center gap-2 text-xs text-slate-500">
+                            <span class="w-4 h-4 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin"></span>
+                            Calculating gross profit...
+                        </span>
+                    </div>
+                    <div id="results-error" class="hidden py-6" role="alert"></div>
+                    <div id="results-empty" class="hidden py-10 text-center">
+                        <div class="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+                            <i data-lucide="search-x" class="w-5 h-5 text-slate-400"></i>
+                        </div>
+                        <h4 class="text-sm font-bold text-slate-700">No sales or returns found</h4>
+                        <p class="text-xs text-slate-500 mt-1 max-w-md mx-auto">Nothing matches the selected period and filters. Choose a longer period or clear the search.</p>
+                    </div>
+                    <div id="results-table-wrap" class="hidden">
+                        <div class="hidden md:block relative overflow-x-auto -mx-4 sm:-mx-5">
+                            <table class="w-full text-left min-w-[980px]">
+                                <caption class="sr-only" id="table-caption">Gross profit by customer</caption>
+                                <thead class="bg-slate-50 border-y border-slate-200"><tr id="results-head" class="text-[10px] uppercase tracking-wide text-slate-500"></tr></thead>
+                                <tbody id="results-tbody" class="divide-y divide-slate-100"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <ul id="results-cards" class="hidden md:hidden space-y-3" aria-label="Gross profit rows"></ul>
+                    <div id="results-pagination" class="hidden mt-3 pt-3 border-t border-slate-100"></div>
+                </div>
+            </section>
+
+            <section class="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-3" aria-labelledby="method-heading">
+                <h3 id="method-heading" class="text-[11px] font-bold text-slate-700 mb-1 flex items-center gap-2">
+                    <i data-lucide="calculator" class="w-3.5 h-3.5 text-slate-400"></i> How values are calculated
+                </h3>
+                <p id="calculation-text" class="text-[10px] leading-relaxed text-slate-500"></p>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        const PAGE_SIZE = 25;
+        const SORT_DEFAULT = 'gross_profit:desc';
+        const VIEWS = {
+            customers: { noun: 'customer', search: 'Search customers', placeholder: 'Name, customer ID or phone...', caption: 'Gross profit by customer' },
+            products: { noun: 'product', search: 'Search products', placeholder: 'Product name, ID or category...', caption: 'Gross profit by product' },
+        };
+        const state = {
+            view: 'customers', q: '', status: 'all', sort: SORT_DEFAULT, page: 1, customerId: '', preset: 'last_90',
+            start: '', end: '', today: '', firstDate: '', requestSeq: 0,
+        };
+
+        function esc(value) {
+            return String(value === null || value === undefined ? '' : value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function safeHref(url) {
+            const text = String(url || '').trim();
+            if (/^(\/|#|https?:\/\/)/i.test(text) || (text && !text.includes(':'))) return text;
+            return '#';
+        }
+
+        function debounce(fn, wait) {
+            let timer;
+            const debounced = (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), wait); };
+            debounced.cancel = () => clearTimeout(timer);
+            return debounced;
+        }
+
+        function refreshIcons() {
+            if (window.lucide) lucide.createIcons();
+        }
+
+        async function apiFetch(url) {
+            const response = await fetch(url, { headers: { Accept: 'application/json' } });
+            if (response.status === 401) {
+                window.location.href = '/login';
+                throw new Error('Authentication required.');
+            }
+            let body = {};
+            try { body = await response.json(); } catch (err) { body = {}; }
+            if (!response.ok) {
+                const error = new Error(typeof body.message === 'string' ? body.message : `Request failed (${response.status}).`);
+                error.status = response.status;
+                throw error;
+            }
+            return body;
+        }
+
+        // ---------------- Sidebar ----------------
+        let isSidebarCollapsed = localStorage.getItem('sidebar_collapsed') === 'true';
+
+        function applySidebarState() {
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.getElementById('main-content');
+            const overlay = document.getElementById('sidebar-overlay');
+            if (!sidebar || !mainContent) return;
+            if (window.innerWidth >= 1024) {
+                if (overlay) overlay.classList.remove('active');
+                sidebar.classList.toggle('lg:-translate-x-full', isSidebarCollapsed);
+                sidebar.classList.toggle('lg:translate-x-0', !isSidebarCollapsed);
+                mainContent.classList.toggle('lg:ml-64', !isSidebarCollapsed);
+                mainContent.classList.toggle('lg:ml-0', isSidebarCollapsed);
+            } else {
+                mainContent.classList.remove('lg:ml-0');
+                mainContent.classList.add('lg:ml-64');
+                sidebar.classList.toggle('translate-x-0', !isSidebarCollapsed);
+                sidebar.classList.toggle('-translate-x-full', isSidebarCollapsed);
+                if (overlay) overlay.classList.toggle('active', !isSidebarCollapsed);
+            }
+        }
+
+        function toggleSidebar() {
+            isSidebarCollapsed = !isSidebarCollapsed;
+            localStorage.setItem('sidebar_collapsed', isSidebarCollapsed);
+            applySidebarState();
+        }
+
+        async function loadSidebarMenus() {
+            try {
+                const res = await fetch('/api/menus');
+                renderSidebarNav(await res.json());
+            } catch (err) {
+                const container = document.getElementById('sidebar-nav-container');
+                if (container) container.innerHTML = '<p class="px-3 py-4 text-xs text-slate-400">Menus could not be loaded.</p>';
+            }
+        }
+
+        function renderSubmenuLink(sub, currentPath) {
+            if (Number(sub.is_disabled) === 1) {
+                return `<div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-500 cursor-not-allowed opacity-60" aria-disabled="true"><i data-lucide="${esc(sub.icon || 'circle')}" class="w-2.5 h-2.5 shrink-0"></i><span class="truncate">${esc(sub.title)}</span></div>`;
+            }
+            const href = safeHref(sub.url);
+            const active = currentPath === href || currentPath === '/' + href;
+            const tone = active ? 'bg-blue-600 text-white font-bold shadow-sm' : 'text-slate-400 hover:text-white hover:bg-white/5';
+            return `<a href="${esc(href)}" class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition ${tone}"${active ? ' aria-current="page"' : ''}>
+                <i data-lucide="${esc(sub.icon || 'circle')}" class="w-2.5 h-2.5 shrink-0"></i><span class="truncate">${esc(sub.title)}</span></a>`;
+        }
+
+        function renderSidebarNav(menus) {
+            const container = document.getElementById('sidebar-nav-container');
+            if (!container) return;
+            const sections = {};
+            (Array.isArray(menus) ? menus : []).forEach(m => {
+                const key = m.section || 'General';
+                (sections[key] = sections[key] || []).push(m);
+            });
+            const currentPath = window.location.pathname;
+            let html = '';
+            for (const [title, items] of Object.entries(sections)) {
+                html += `<p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-3 mt-4 mb-2 first:mt-1">${esc(title)}</p>`;
+                items.forEach((m, idx) => {
+                    const subs = Array.isArray(m.submenus) ? m.submenus : [];
+                    if (subs.length) {
+                        const groupId = `menu-tree-${Number(m.id) || idx}`;
+                        const open = subs.some(s => { const h = safeHref(s.url); return currentPath === h || currentPath === '/' + h; });
+                        html += `<div>
+                            <button type="button" data-submenu="${esc(groupId)}" aria-expanded="${open}" aria-controls="${esc(groupId)}-submenu" class="sidebar-nav-item w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium ${open ? 'text-white bg-white/10' : 'text-slate-300 hover:text-white'} transition group">
+                                <span class="flex items-center gap-3 overflow-hidden">
+                                    <span class="w-8 h-8 rounded-lg ${open ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 group-hover:text-white'} flex items-center justify-center shrink-0"><i data-lucide="${esc(m.icon || 'folder')}" class="w-4 h-4"></i></span>
+                                    <span class="block truncate text-xs ${open ? 'font-bold text-white' : ''}">${esc(m.title)}</span>
+                                </span>
+                                <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0 ${open ? 'rotate-90' : ''}"></i>
+                            </button>
+                            <div id="${esc(groupId)}-submenu" class="space-y-1 pl-4 pr-1 mt-1 border-l-2 border-slate-800 ml-4 ${open ? '' : 'hidden'}">
+                                ${subs.map(sub => renderSubmenuLink(sub, currentPath)).join('')}
+                            </div>
+                        </div>`;
+                    } else {
+                        const href = safeHref(m.url);
+                        const active = currentPath === href;
+                        html += `<a href="${esc(href)}" class="sidebar-nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium ${active ? 'active text-white font-bold' : 'text-slate-300 hover:text-white'} transition group">
+                            <span class="w-8 h-8 rounded-lg ${active ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 group-hover:text-white'} flex items-center justify-center shrink-0"><i data-lucide="${esc(m.icon || 'circle')}" class="w-4 h-4"></i></span>
+                            <span class="truncate text-xs">${esc(m.title)}</span></a>`;
+                    }
+                });
+            }
+            container.innerHTML = html;
+            refreshIcons();
+        }
+
+        function onSidebarClick(event) {
+            const button = event.target.closest('button[data-submenu]');
+            if (!button) return;
+            const panel = document.getElementById(`${button.dataset.submenu}-submenu`);
+            if (!panel) return;
+            const nowHidden = panel.classList.toggle('hidden');
+            button.setAttribute('aria-expanded', String(!nowHidden));
+            const arrow = button.querySelector('svg:last-child');
+            if (arrow) arrow.classList.toggle('rotate-90', !nowHidden);
+        }
+
+        // ---------------- Period and URL state ----------------
+        function isoDate(d) {
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        }
+
+        function shiftDays(iso, days) {
+            const d = new Date(`${iso}T00:00:00`);
+            d.setDate(d.getDate() + days);
+            return isoDate(d);
+        }
+
+        function presetRange(preset) {
+            const end = state.today;
+            if (preset === 'last_30') return [shiftDays(end, -29), end];
+            if (preset === 'this_year') return [`${end.slice(0, 4)}-01-01`, end];
+            if (preset === 'last_365') return [shiftDays(end, -364), end];
+            if (preset === 'all' && state.firstDate) return [state.firstDate, end];
+            return [shiftDays(end, -89), end];
+        }
+
+        function readStateFromUrl() {
+            const params = new URLSearchParams(window.location.search);
+            state.view = params.get('view') === 'products' ? 'products' : 'customers';
+            state.q = (params.get('q') || '').slice(0, 100);
+            state.status = ['known', 'unknown'].includes(params.get('profit_status')) ? params.get('profit_status') : 'all';
+            const sort = `${params.get('sort_by') || 'gross_profit'}:${params.get('sort_order') || 'desc'}`;
+            state.sort = document.querySelector(`#sort-filter option[value="${CSS.escape(sort)}"]`) ? sort : SORT_DEFAULT;
+            state.page = Math.max(1, parseInt(params.get('page') || '1', 10) || 1);
+            state.customerId = (params.get('customer_id') || '').slice(0, 10);
+            const start = params.get('start_date');
+            const end = params.get('end_date');
+            if (/^\d{4}-\d{2}-\d{2}$/.test(start || '') && /^\d{4}-\d{2}-\d{2}$/.test(end || '')) {
+                state.start = start; state.end = end; state.preset = params.get('preset') || 'custom';
+            } else {
+                [state.start, state.end] = presetRange(state.preset);
+            }
+        }
+
+        function queryParams() {
+            const [sortBy, sortOrder] = state.sort.split(':');
+            const params = new URLSearchParams({ start_date: state.start, end_date: state.end, sort_by: sortBy, sort_order: sortOrder, page: String(state.page) });
+            if (state.q) params.set('q', state.q);
+            if (state.status !== 'all') params.set('profit_status', state.status);
+            if (state.customerId) params.set('customer_id', state.customerId);
+            return params;
+        }
+
+        function syncControls() {
+            document.getElementById('preset-filter').value = state.preset;
+            document.getElementById('start-date').value = state.start;
+            document.getElementById('end-date').value = state.end;
+            document.getElementById('customer-id-input').value = state.customerId;
+            document.getElementById('search-input').value = state.q;
+            document.getElementById('status-filter').value = state.status;
+            document.getElementById('sort-filter').value = state.sort;
+            const view = VIEWS[state.view];
+            document.getElementById('search-label').textContent = view.search;
+            document.getElementById('search-input').placeholder = view.placeholder;
+            document.getElementById('table-caption').textContent = view.caption;
+            document.querySelectorAll('[role="tab"]').forEach(tab => {
+                const selected = tab.dataset.view === state.view;
+                tab.setAttribute('aria-selected', String(selected));
+                tab.tabIndex = selected ? 0 : -1;
+            });
+            document.getElementById('results-region').setAttribute('aria-labelledby', `tab-${state.view}`);
+        }
+
+        // ---------------- Rendering helpers ----------------
+        function value(display, tone) {
+            if (display === 'Unknown') {
+                return '<span class="unknown-chip" title="Not enough reliable sale or cost data"><i data-lucide="help-circle" class="w-3 h-3"></i>Unknown</span>';
+            }
+            return `<span class="tabular whitespace-nowrap ${tone || 'text-slate-700'}">${esc(display)}</span>`;
+        }
+
+        function profitTone(amount) {
+            if (amount === null || amount === undefined) return 'text-slate-700';
+            return amount < 0 ? 'font-bold text-rose-700' : 'font-bold text-emerald-700';
+        }
+
+        function renderPager(pagination, noun) {
+            if (!pagination || !pagination.total_records) return '';
+            const { page, total_pages: totalPages, total_records: total } = pagination;
+            let html = `<div class="flex flex-wrap items-center justify-between gap-2"><p class="text-xs text-slate-500">${esc(total)} ${esc(noun)}${total === 1 ? '' : 's'} · Page ${esc(page)} of ${esc(Math.max(totalPages, 1))}</p>`;
+            if (totalPages > 1) {
+                const start = Math.max(1, Math.min(page - 2, totalPages - 4));
+                const end = Math.min(totalPages, start + 4);
+                const button = (p, label, current) => `<button type="button" data-page="${esc(p)}" class="px-2.5 py-1 text-xs border border-slate-200 rounded ${current ? 'bg-blue-600 text-white border-blue-600' : 'text-slate-600 hover:bg-slate-100'}"${current ? ' aria-current="page"' : ''} aria-label="${esc(label === String(p) ? `Page ${p}` : `${label} page`)}">${esc(label)}</button>`;
+                html += `<nav class="flex items-center gap-1" aria-label="${esc(noun)} pages">`;
+                if (page > 1) html += button(page - 1, 'Previous', false);
+                for (let p = start; p <= end; p++) html += button(p, String(p), p === page);
+                if (page < totalPages) html += button(page + 1, 'Next', false);
+                html += '</nav>';
+            }
+            return html + '</div>';
+        }
+
+        function summaryCard(label, main, sub, tone, icon) {
+            return `<div class="summary-card rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div class="flex items-center justify-between gap-2"><p class="text-[10px] font-bold uppercase tracking-wide text-slate-500">${esc(label)}</p><i data-lucide="${icon}" class="w-4 h-4 ${tone}"></i></div>
+                <p class="mt-2 text-lg font-extrabold tabular ${tone}">${main === 'Unknown' ? value(main) : esc(main)}</p>
+                <p class="mt-1 text-[10px] leading-snug text-slate-500">${esc(sub)}</p></div>`;
+        }
+
+        function renderSummary(report) {
+            const s = report.summary;
+            document.getElementById('period-label').textContent = report.period.display;
+            const noun = VIEWS[report.view].noun;
+            const scope = report.customer ? `${report.customer.customer_name} (${report.customer.customer_id})` : `All ${noun}s in the period`;
+            document.getElementById('summary-scope').textContent = report.summary_filtered
+                ? `${scope} · Filtered: totals cover only the ${s.row_count} ${noun}${s.row_count === 1 ? '' : 's'} matching the search and status`
+                : scope;
+            const profitSub = s.gross_profit !== null
+                ? `Gross margin ${s.gross_margin_display}`
+                : (s.costed_gross_profit !== null ? `${s.costed_gross_profit_display} on costed lines only (partial)` : 'No lines with a recorded cost');
+            const freeNote = s.zero_price_lines ? ` · ${s.zero_price_lines} zero-price line${s.zero_price_lines === 1 ? '' : 's'} (e.g. free items) counted at cost` : '';
+            document.getElementById('summary-cards').innerHTML = [
+                summaryCard('Net sales', s.net_sales_display, `Sales ${s.sales_display} minus returns ${s.returns_display}`, 'text-slate-800', 'receipt'),
+                summaryCard('Cost of sales', s.cost_of_sales_display, `Recorded cost of goods sold, net of returns${freeNote}`, 'text-slate-800', 'package'),
+                summaryCard('Gross profit', s.gross_profit_display, profitSub, s.gross_profit !== null ? profitTone(s.gross_profit) : 'text-slate-700', 'banknote'),
+                summaryCard('Cost coverage', s.cost_coverage_display, `Sales without a recorded cost: ${s.uncosted_sales_display}`, 'text-slate-800', 'shield-check'),
+                summaryCard(`${VIEWS[report.view].noun[0].toUpperCase()}${VIEWS[report.view].noun.slice(1)}s`, String(s.row_count), `${s.known_count} with gross profit · ${s.unknown_count} Unknown`, 'text-slate-800', 'list'),
+            ].join('');
+            document.getElementById('summary-cards').setAttribute('aria-busy', 'false');
+            const banner = document.getElementById('unavailable-banner');
+            banner.classList.toggle('hidden', !(s.row_count > 0 && s.unknown_count > 0));
+            document.getElementById('unavailable-text').textContent = s.unknown_count === s.row_count
+                ? 'Gross profit could not be calculated for any row in this view because reliable sale or cost data is missing:'
+                : `Gross profit is Unknown for ${s.unknown_count} of ${s.row_count} rows because reliable sale or cost data is missing:`;
+            document.getElementById('unknown-reasons').innerHTML = (s.data_notes || []).map(n => `<li>${esc(n)}</li>`).join('');
+        }
+
+        function renderSummaryLoading() {
+            const cards = document.getElementById('summary-cards');
+            cards.setAttribute('aria-busy', 'true');
+            cards.innerHTML = Array.from({ length: 5 }, () => '<div class="rounded-xl border border-slate-200 bg-white p-4 h-[104px] animate-pulse"><div class="h-2 w-20 bg-slate-100 rounded"></div><div class="mt-4 h-5 w-16 bg-slate-100 rounded"></div></div>').join('');
+        }
+
+        function renderCustomerChip(customer) {
+            const chip = document.getElementById('customer-chip');
+            if (!customer) { chip.classList.add('hidden'); chip.innerHTML = ''; return; }
+            chip.innerHTML = `<span class="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-800 ring-1 ring-blue-200">
+                <i data-lucide="user" class="w-3.5 h-3.5"></i>Customer: ${esc(customer.customer_name)} (${esc(customer.customer_id)})
+                <button type="button" data-action="clear-customer" class="rounded-full p-0.5 hover:bg-blue-100" aria-label="Clear customer filter"><i data-lucide="x" class="w-3.5 h-3.5"></i></button></span>`;
+            chip.classList.remove('hidden');
+        }
+
+        function metricCells(r) {
+            return `<td class="px-4 py-3 text-right text-sm">${value(r.sales_display)}</td>
+                <td class="px-4 py-3 text-right text-sm">${value(r.returns_display)}</td>
+                <td class="px-4 py-3 text-right text-sm">${value(r.net_sales_display)}</td>
+                <td class="px-4 py-3 text-right text-sm">${value(r.cost_of_sales_display)}</td>
+                <td class="px-4 py-3 text-right text-sm">${value(r.gross_profit_display, profitTone(r.gross_profit))}</td>
+                <td class="px-4 py-3 text-right text-sm">${value(r.gross_margin_display)}</td>
+                <td class="px-4 py-3 text-right text-xs">${value(r.cost_coverage_display)}</td>`;
+        }
+
+        function nameCell(r) {
+            if (state.view === 'customers') {
+                return `<div class="font-semibold text-sm text-slate-800 max-w-[220px] truncate" title="${esc(r.customer_name)}">${esc(r.customer_name)}</div>
+                    <div class="text-[10px] text-slate-500 tabular">${esc(r.customer_id || 'Unknown')} · ${esc(r.phone_display)}</div>`;
+            }
+            return `<div class="font-semibold text-sm text-slate-800 max-w-[240px] truncate" title="${esc(r.product_name)}">${esc(r.product_name)}</div>
+                <div class="text-[10px] text-slate-500">${esc(r.product_id || 'Unknown')} · ${esc(r.category_name)}</div>`;
+        }
+
+        function actionButton(r, extra) {
+            if (state.view !== 'customers' || !r.customer_id) return '';
+            return `<button type="button" data-customer-id="${esc(r.customer_id)}" class="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 hover:text-blue-700 ${extra || ''}" aria-label="Show products for ${esc(r.customer_name)}"><i data-lucide="package" class="w-3.5 h-3.5"></i>Products</button>`;
+        }
+
+        function renderHead() {
+            const first = state.view === 'customers' ? 'Customer' : 'Product';
+            const cols = [[first, ''], ['Invoices', 'text-right'], ['Sales', 'text-right'], ['Returns', 'text-right'], ['Net sales', 'text-right'],
+                ['Cost of sales', 'text-right'], ['Gross profit', 'text-right'], ['Gross margin', 'text-right'], ['Cost coverage', 'text-right']];
+            let html = cols.map(([label, align]) => `<th scope="col" class="px-4 py-3 font-bold ${align}">${esc(label)}</th>`).join('');
+            if (state.view === 'customers') html += '<th scope="col" class="px-4 py-3"><span class="sr-only">Actions</span></th>';
+            document.getElementById('results-head').innerHTML = html;
+        }
+
+        function renderTable(rows) {
+            renderHead();
+            document.getElementById('results-tbody').innerHTML = rows.map(r => `
+                <tr class="hover:bg-slate-50/60 align-top">
+                    <td class="px-4 py-3">${nameCell(r)}</td>
+                    <td class="px-4 py-3 text-right text-sm tabular">${esc(r.invoice_count)}<div class="text-[10px] text-slate-400">${esc(r.quantity_sold)} sold${r.quantity_returned ? ` · ${esc(r.quantity_returned)} returned` : ''}</div></td>
+                    ${metricCells(r)}
+                    ${state.view === 'customers' ? `<td class="px-4 py-3 text-right">${actionButton(r)}</td>` : ''}
+                </tr>`).join('');
+        }
+
+        function renderCards(rows) {
+            const line = (label, html) => `<div><dt class="text-[10px] uppercase tracking-wide text-slate-400">${esc(label)}</dt><dd class="text-xs mt-0.5">${html}</dd></div>`;
+            document.getElementById('results-cards').innerHTML = rows.map(r => `
+                <li class="rounded-xl border border-slate-200 p-4">
+                    <div class="min-w-0">${nameCell(r)}</div>
+                    <dl class="mt-3 grid grid-cols-2 gap-3">
+                        ${line('Net sales', value(r.net_sales_display))}
+                        ${line('Cost of sales', value(r.cost_of_sales_display))}
+                        ${line('Gross profit', value(r.gross_profit_display, profitTone(r.gross_profit)))}
+                        ${line('Gross margin', value(r.gross_margin_display))}
+                        ${line('Returns', value(r.returns_display))}
+                        ${line('Cost coverage', value(r.cost_coverage_display))}
+                    </dl>
+                    ${actionButton(r, 'mt-3 w-full justify-center')}
+                </li>`).join('');
+        }
+
+        function showResults(kind, message) {
+            const panels = ['results-loading', 'results-error', 'results-empty', 'results-table-wrap', 'results-cards', 'results-pagination'];
+            panels.forEach(id => document.getElementById(id).classList.add('hidden'));
+            if (kind === 'data') {
+                ['results-table-wrap', 'results-cards', 'results-pagination'].forEach(id => document.getElementById(id).classList.remove('hidden'));
+                return;
+            }
+            const el = document.getElementById(`results-${kind}`);
+            if (kind === 'error') {
+                el.innerHTML = `<div class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 flex flex-wrap items-center justify-between gap-3">
+                    <span>${esc(message)}</span><button type="button" data-action="retry" class="rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100">Try again</button></div>`;
+            }
+            el.classList.remove('hidden');
+        }
+
+        function validPeriod() {
+            const error = document.getElementById('period-error');
+            const message = !state.start || !state.end ? 'Choose both a start and an end date.'
+                : state.start > state.end ? 'The start date must be on or before the end date.' : '';
+            error.textContent = message;
+            error.classList.toggle('hidden', !message);
+            return !message;
+        }
+
+        async function loadReport(options = {}) {
+            if (!validPeriod()) return;
+            const seq = ++state.requestSeq;
+            const params = queryParams();
+            const urlParams = new URLSearchParams(params);
+            urlParams.set('view', state.view);
+            urlParams.set('preset', state.preset);
+            history.replaceState(null, '', `${window.location.pathname}?${urlParams.toString()}`);
+            params.set('page_size', String(PAGE_SIZE));
+            if (options.refresh) params.set('refresh', 'true');
+            showResults('loading');
+            renderSummaryLoading();
+            try {
+                const report = await apiFetch(`/api/customer-profitability/${state.view}?${params.toString()}`);
+                if (seq !== state.requestSeq) return;
+                if (!report.rows.length && report.pagination.total_records > 0 && state.page > 1) {
+                    state.page = 1;  // a stale page number from the URL: go back to the first page
+                    return loadReport(options);
+                }
+                renderSummary(report);
+                renderCustomerChip(report.customer);
+                if (!report.rows.length) {
+                    showResults('empty');
+                } else {
+                    renderTable(report.rows);
+                    renderCards(report.rows);
+                    document.getElementById('results-pagination').innerHTML = renderPager(report.pagination, VIEWS[state.view].noun);
+                    showResults('data');
+                }
+            } catch (err) {
+                if (seq !== state.requestSeq) return;
+                document.getElementById('summary-cards').innerHTML = '<p class="col-span-full text-xs text-slate-500">Summary unavailable.</p>';
+                if (err.status === 404) renderCustomerChip(null);
+                showResults('error', err.message || 'The report could not be loaded.');
+            } finally {
+                refreshIcons();
+            }
+        }
+
+        // ---------------- Bootstrap & events ----------------
+        async function loadBootstrap() {
+            try {
+                const data = await apiFetch('/api/customer-profitability/bootstrap');
+                const meta = data.metadata || {};
+                state.today = meta.default_end_date || isoDate(new Date());
+                state.firstDate = (data.data_range || {}).first_date || '';
+                document.getElementById('data-range').textContent = (data.data_range || {}).display || 'Unknown';
+                if (meta.disclaimer) document.getElementById('disclaimer-text').textContent = meta.disclaimer;
+                document.getElementById('calculation-text').textContent = meta.calculation_basis || '';
+            } catch (err) {
+                state.today = isoDate(new Date());
+                document.getElementById('calculation-text').textContent = 'Calculation notes could not be loaded.';
+            }
+        }
+
+        function setView(view) {
+            if (!VIEWS[view] || view === state.view) return;
+            state.view = view;
+            state.page = 1;
+            state.q = '';
+            syncControls();
+            loadReport();
+        }
+
+        function applyCustomer(id) {
+            state.customerId = String(id || '').trim().slice(0, 10);
+            state.page = 1;
+            syncControls();
+            loadReport();
+        }
+
+        function bindEvents() {
+            document.getElementById('sidebar-nav-container').addEventListener('click', onSidebarClick);
+            document.getElementById('preset-filter').addEventListener('change', e => {
+                state.preset = e.target.value;
+                if (state.preset !== 'custom') [state.start, state.end] = presetRange(state.preset);
+                state.page = 1; syncControls(); loadReport();
+            });
+            ['start-date', 'end-date'].forEach(id => document.getElementById(id).addEventListener('change', () => {
+                state.start = document.getElementById('start-date').value;
+                state.end = document.getElementById('end-date').value;
+                state.preset = 'custom'; state.page = 1;
+                document.getElementById('preset-filter').value = 'custom';
+                loadReport();
+            }));
+            const customerInput = document.getElementById('customer-id-input');
+            document.getElementById('customer-apply').addEventListener('click', () => applyCustomer(customerInput.value));
+            customerInput.addEventListener('keydown', e => { if (e.key === 'Enter') applyCustomer(customerInput.value); });
+
+            const search = document.getElementById('search-input');
+            const runSearch = () => { state.q = search.value.trim().slice(0, 100); state.page = 1; loadReport(); };
+            const debounced = debounce(runSearch, 350);
+            search.addEventListener('input', debounced);
+            search.addEventListener('keydown', e => { if (e.key === 'Enter') { debounced.cancel(); runSearch(); } });
+            document.getElementById('status-filter').addEventListener('change', e => { state.status = e.target.value; state.page = 1; loadReport(); });
+            document.getElementById('sort-filter').addEventListener('change', e => { state.sort = e.target.value; state.page = 1; loadReport(); });
+            document.getElementById('refresh-button').addEventListener('click', () => loadReport({ refresh: true }));
+
+            const tabs = [...document.querySelectorAll('[role="tab"]')];
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => setView(tab.dataset.view));
+                tab.addEventListener('keydown', e => {
+                    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+                    const next = tabs[(tabs.indexOf(tab) + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+                    next.focus();
+                    setView(next.dataset.view);
+                });
+            });
+
+            document.getElementById('customer-chip').addEventListener('click', e => {
+                if (e.target.closest('[data-action="clear-customer"]')) applyCustomer('');
+            });
+            document.getElementById('results-region').addEventListener('click', e => {
+                const customerButton = e.target.closest('button[data-customer-id]');
+                if (customerButton) {
+                    state.customerId = customerButton.dataset.customerId;
+                    state.view = 'products'; state.page = 1; state.q = '';
+                    syncControls(); loadReport();
+                    document.getElementById('tab-products').focus();
+                    return;
+                }
+                const pageButton = e.target.closest('button[data-page]');
+                if (pageButton) {
+                    state.page = Number(pageButton.dataset.page) || 1;
+                    loadReport();
+                    document.getElementById('results-heading').scrollIntoView({ block: 'start' });
+                    return;
+                }
+                if (e.target.closest('[data-action="retry"]')) loadReport();
+            });
+            window.addEventListener('resize', debounce(applySidebarState, 150));
+        }
+
+        async function init() {
+            applySidebarState();
+            bindEvents();
+            loadSidebarMenus();
+            await loadBootstrap();
+            readStateFromUrl();
+            syncControls();
+            await loadReport();
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

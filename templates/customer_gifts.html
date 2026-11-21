@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Gifts — Printer Analytics</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .sidebar-scroll::-webkit-scrollbar { width: 4px; }
+        .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+        .sidebar-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+        .sidebar-nav-item { transition: all 0.15s ease; }
+        .sidebar-nav-item:hover { background: rgba(255,255,255,0.08); }
+        .sidebar-nav-item.active { background: rgba(59, 130, 246, 0.25); border-right: 3px solid #3b82f6; }
+        @media (max-width: 1023px) {
+            .sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 40; display: none; }
+            .sidebar-overlay.active { display: block; }
+        }
+        .modal-scroll::-webkit-scrollbar { width: 6px; }
+        .modal-scroll::-webkit-scrollbar-track { background: #f1f5f9; }
+        .modal-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .tab-btn { transition: all 0.15s ease; }
+        .tab-btn.active { background: #3b82f6; color: #fff; font-weight: 700; }
+        .tab-btn:not(.active) { background: #e2e8f0; color: #475569; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex">
+
+    <!-- Mobile Sidebar Overlay -->
+    <div id="sidebar-overlay" class="sidebar-overlay lg:hidden" onclick="toggleSidebar()"></div>
+
+    <!-- ===== SIDEBAR ===== -->
+    <aside id="sidebar" class="fixed top-0 left-0 z-50 h-screen w-64 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-white flex flex-col transition-all duration-300 ease-in-out -translate-x-full lg:translate-x-0 shadow-2xl">
+        <div class="h-16 flex items-center gap-3 px-5 border-b border-white/10 shrink-0">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20 text-white font-bold">
+                <i data-lucide="printer" class="w-5 h-5"></i>
+            </div>
+            <div>
+                <h1 class="text-sm font-bold tracking-tight text-white leading-none">Printer Analytics</h1>
+                <p class="text-[10px] text-slate-400 font-medium mt-0.5">Fleet Ops &amp; Intelligence</p>
+            </div>
+        </div>
+        <nav class="flex-1 overflow-y-auto sidebar-scroll px-3 py-4 space-y-1" id="sidebar-nav-container">
+            <div class="px-3 py-4 text-xs text-slate-400 flex items-center gap-2">
+                <div class="w-4 h-4 border-2 border-slate-500 border-t-blue-500 rounded-full animate-spin"></div>
+                <span>Loading menus...</span>
+            </div>
+        </nav>
+        <div class="p-3 border-t border-white/10 shrink-0 bg-slate-950/40">
+            <div class="flex items-center justify-between px-2 py-1.5 text-xs text-slate-400">
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span class="font-medium text-slate-300">Database Live</span>
+                </div>
+                <span class="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-white/10 text-slate-300">
+                    {{ user.role if user and user.role else 'Admin' }}
+                </span>
+            </div>
+            <a href="/logout" class="mt-2 w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/10 transition">
+                <i data-lucide="log-out" class="w-4 h-4"></i>
+                <span>Sign Out</span>
+            </a>
+        </div>
+    </aside>
+
+    <!-- ===== MAIN CONTENT AREA ===== -->
+    <div id="main-content" class="transition-all duration-300 ease-in-out lg:ml-64 flex-1 flex flex-col min-h-screen">
+
+        <!-- Top Header Bar -->
+        <header class="sticky top-0 z-30 h-16 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-4 sm:px-6 flex items-center justify-between shadow-sm">
+            <div class="flex items-center gap-3">
+                <button type="button" onclick="toggleSidebar()" class="p-2 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 transition flex items-center justify-center" aria-label="Toggle navigation menu">
+                    <i data-lucide="menu" class="w-5 h-5"></i>
+                </button>
+                <div class="flex items-center gap-2 text-xs font-medium text-slate-500">
+                    <a href="/menus/dashboard" class="hover:text-blue-600 transition">Dashboard</a>
+                    <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+                    <span>Client Operations</span>
+                    <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+                    <span class="text-slate-800 font-bold">Customer Gifts</span>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <button type="button" onclick="fetchCurrentTab()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 border border-slate-200 hover:bg-slate-100 transition">
+                    <i id="refresh-icon" data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                    <span>Refresh</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Page Content -->
+        <main class="flex-1 px-4 sm:px-6 py-6 max-w-7xl mx-auto w-full">
+
+            <!-- Page Title -->
+            <div class="mb-6">
+                <div class="flex items-center gap-3 mb-1">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center shadow-lg shadow-pink-500/20">
+                        <i data-lucide="gift" class="w-5 h-5 text-white"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-800">Customer Gift Suggestions</h2>
+                        <p class="text-xs text-slate-500 mt-0.5">Use sales data to identify customers who may be considered for a gift. Admin records gifts actually given.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Summary Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-bold text-emerald-700 uppercase tracking-wide">New Customers</span>
+                        <i data-lucide="user-plus" class="w-5 h-5 text-emerald-500"></i>
+                    </div>
+                    <p id="summary-new" class="text-3xl font-extrabold text-slate-800">-</p>
+                    <p class="text-[10px] text-slate-500 mt-1">First recorded purchase within <span id="summary-days-label">90</span> days</p>
+                    <p id="summary-new-range" class="text-[10px] text-slate-400 mt-0.5"></p>
+                </div>
+                <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-bold text-blue-700 uppercase tracking-wide">Repeat Customers</span>
+                        <i data-lucide="users" class="w-5 h-5 text-blue-500"></i>
+                    </div>
+                    <p id="summary-repeat" class="text-3xl font-extrabold text-slate-800">-</p>
+                    <p class="text-[10px] text-slate-500 mt-1">First recorded purchase earlier, purchased on 2+ different days</p>
+                    <p id="summary-repeat-range" class="text-[10px] text-slate-400 mt-0.5"></p>
+                </div>
+                <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-bold text-pink-700 uppercase tracking-wide">Gifts Given</span>
+                        <i data-lucide="gift" class="w-5 h-5 text-pink-500"></i>
+                    </div>
+                    <p id="summary-gifts" class="text-3xl font-extrabold text-slate-800">-</p>
+                    <p class="text-[10px] text-slate-500 mt-1">Total gift records by Admin</p>
+                </div>
+            </div>
+
+            <!-- Tab Buttons -->
+            <div class="flex flex-wrap gap-2 mb-5">
+                <button type="button" onclick="switchTab('new')" id="tab-new" class="tab-btn active px-4 py-2 rounded-full text-xs font-semibold transition">
+                    New Customers <span id="tab-new-count" class="ml-1 opacity-70">-</span>
+                </button>
+                <button type="button" onclick="switchTab('repeat')" id="tab-repeat" class="tab-btn px-4 py-2 rounded-full text-xs font-semibold transition">
+                    Repeat Customers <span id="tab-repeat-count" class="ml-1 opacity-70">-</span>
+                </button>
+                <button type="button" onclick="switchTab('history')" id="tab-history" class="tab-btn px-4 py-2 rounded-full text-xs font-semibold transition">
+                    Gift History <span id="tab-history-count" class="ml-1 opacity-70">-</span>
+                </button>
+            </div>
+
+            <!-- Filters -->
+            <div id="filter-bar" class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm mb-5">
+                <div class="flex flex-wrap gap-3 items-end">
+                    <div class="flex-1 min-w-[200px]">
+                        <label class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Search</label>
+                        <div class="relative">
+                            <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                            <input id="filter-search" type="text" placeholder="Search by customer name, ID or phone..."
+                                   class="w-full pl-10 pr-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
+                        </div>
+                    </div>
+                    <div id="filter-days-wrap" class="w-28">
+                        <label class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Days</label>
+                        <input id="filter-days" type="number" min="1" max="3650" value="90" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition" />
+                    </div>
+                    <div id="filter-from-wrap" class="w-36">
+                        <label class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">First Purchase From</label>
+                        <input id="filter-date-from" type="date" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition" />
+                    </div>
+                    <div id="filter-to-wrap" class="w-36">
+                        <label class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">First Purchase To</label>
+                        <input id="filter-date-to" type="date" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition" />
+                    </div>
+                    <div id="filter-min-amount-wrap" class="w-32">
+                        <label class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Min Amount</label>
+                        <input id="filter-min-amount" type="number" min="0" step="100" placeholder="0" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition" />
+                    </div>
+                    <div id="filter-min-orders-wrap" class="w-28">
+                        <label class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Min Orders</label>
+                        <input id="filter-min-orders" type="number" min="0" placeholder="0" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition" />
+                    </div>
+                    <div id="filter-sort-wrap" class="w-48">
+                        <label class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Sort By</label>
+                        <select id="filter-sort" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition">
+                            <option value="total_purchase_amount">Total Amount</option>
+                            <option value="order_count">Order Count</option>
+                            <option value="customer_name">Customer Name</option>
+                            <option value="first_purchase_date">First Purchase Date</option>
+                            <option value="last_purchase_date">Last Purchase Date</option>
+                        </select>
+                    </div>
+                    <div id="filter-sort-order-wrap" class="w-32">
+                        <label class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Sort Order</label>
+                        <select id="filter-sort-order" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition">
+                            <option value="desc">Descending</option>
+                            <option value="asc">Ascending</option>
+                        </select>
+                    </div>
+                    <button type="button" onclick="applyFilters()" class="px-4 py-2 rounded-lg text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 transition shadow-sm">
+                        Apply Filters
+                    </button>
+                </div>
+                <p id="filter-error" class="text-[10px] text-rose-600 mt-2"></p>
+                <p id="date-range-label" class="text-[10px] text-slate-400 mt-2 italic"></p>
+                <p id="calculation-basis" class="text-[10px] text-slate-400 mt-1"></p>
+            </div>
+
+            <!-- Loading State -->
+            <div id="loading-state" class="hidden text-center py-16">
+                <div class="w-8 h-8 border-4 border-slate-200 border-t-blue-500 rounded-full animate-spin mx-auto mb-3"></div>
+                <p class="text-sm text-slate-500">Loading data...</p>
+            </div>
+
+            <!-- Error State -->
+            <div id="error-state" class="hidden">
+                <div class="bg-rose-50 border border-rose-200 rounded-xl p-8 text-center max-w-md mx-auto">
+                    <div class="w-12 h-12 rounded-full bg-rose-100 flex items-center justify-center mx-auto mb-3">
+                        <i data-lucide="alert-circle" class="w-6 h-6 text-rose-500"></i>
+                    </div>
+                    <h3 class="text-sm font-bold text-rose-900">Failed to Load Data</h3>
+                    <p id="error-message-text" class="text-xs text-rose-600 mt-1">Server error</p>
+                    <button type="button" onclick="fetchCurrentTab()" class="mt-3 px-4 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition">Retry</button>
+                </div>
+            </div>
+
+            <!-- Suggestions Table (New / Repeat tabs) -->
+            <div id="suggestions-section" class="hidden">
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead>
+                                <tr class="bg-slate-50 border-b border-slate-200">
+                                    <th class="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase">Customer</th>
+                                    <th class="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase">First Recorded Purchase</th>
+                                    <th class="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase">Last Recorded Purchase</th>
+                                    <th class="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase text-right">Total Amount</th>
+                                    <th class="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase text-center">Orders</th>
+                                    <th class="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase text-center">Purchase Days</th>
+                                    <th class="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase text-center">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="suggestions-tbody" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                    <!-- Pagination -->
+                    <div id="suggestions-pagination" class="flex items-center justify-between px-4 py-3 border-t border-slate-200 bg-slate-50">
+                        <span id="suggestions-page-info" class="text-xs text-slate-500"></span>
+                        <div class="flex gap-1">
+                            <button type="button" id="suggestions-prev" onclick="changePage(-1)" class="px-3 py-1 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-40 transition" disabled>Prev</button>
+                            <button type="button" id="suggestions-next" onclick="changePage(1)" class="px-3 py-1 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-40 transition" disabled>Next</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Empty State -->
+                <div id="empty-state" class="hidden text-center py-16">
+                    <div class="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+                        <i data-lucide="inbox" class="w-8 h-8 text-slate-400"></i>
+                    </div>
+                    <h3 class="text-sm font-bold text-slate-600">No Matching Customers</h3>
+                    <p class="text-xs text-slate-400 mt-1">Adjust filters or search to find customers.</p>
+                </div>
+            </div>
+
+            <!-- Gift History Table -->
+            <div id="history-section" class="hidden">
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead>
+                                <tr class="bg-slate-50 border-b border-slate-200">
+                                    <th class="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase">Customer</th>
+                                    <th class="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase">Gift Name</th>
+                                    <th class="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase">Gift Date</th>
+                                    <th class="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase">Note</th>
+                                    <th class="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase">Recorded By</th>
+                                    <th class="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase">Recorded At</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-tbody" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                    <div id="history-pagination" class="flex items-center justify-between px-4 py-3 border-t border-slate-200 bg-slate-50">
+                        <span id="history-page-info" class="text-xs text-slate-500"></span>
+                        <div class="flex gap-1">
+                            <button type="button" id="history-prev" onclick="changeHistoryPage(-1)" class="px-3 py-1 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-40 transition" disabled>Prev</button>
+                            <button type="button" id="history-next" onclick="changeHistoryPage(1)" class="px-3 py-1 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-40 transition" disabled>Next</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="history-empty" class="hidden text-center py-16">
+                    <div class="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+                        <i data-lucide="gift" class="w-8 h-8 text-slate-400"></i>
+                    </div>
+                    <h3 class="text-sm font-bold text-slate-600">No Gifts Recorded Yet</h3>
+                    <p class="text-xs text-slate-400 mt-1">When an Admin records a gift for a customer, it will appear here.</p>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- ===== CUSTOMER DETAIL / GIFT MODAL ===== -->
+    <div id="detail-modal" class="fixed inset-0 z-[60] hidden">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="closeDetailModal()"></div>
+        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg max-h-[90vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 shrink-0">
+                <h3 class="text-sm font-bold text-slate-800">Customer Details</h3>
+                <button type="button" onclick="closeDetailModal()" class="p-1 rounded-lg hover:bg-slate-200 text-slate-500 transition">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div id="modal-content" class="overflow-y-auto modal-scroll flex-1 px-6 py-5 space-y-5">
+                <!-- Dynamic content -->
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/ai_assistant.js"></script>
+    <script>
+        // === State ===
+        const isAdminUser = {{ 'true' if user and user.role and (user.role|trim|lower) == 'admin' else 'false' }};
+        let currentTab = 'new';
+        let searchQuery = '';
+        let currentPage = 1;
+        let historyPage = 1;
+        const pageSize = 25;
+        let newCustomerDays = 90;
+        let firstPurchaseFrom = '';
+        let firstPurchaseTo = '';
+        let minAmount = null;
+        let minOrders = null;
+        let sortBy = 'total_purchase_amount';
+        let sortOrder = 'desc';
+        let activeCustomerId = null;
+
+        function esc(s) {
+            if (!s) return '';
+            return String(s)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function formatAmount(n) {
+            if (n == null) return '-';
+            return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        // === Sidebar ===
+        let isSidebarCollapsed = localStorage.getItem('sidebar_collapsed') === 'true';
+
+        function applySidebarState() {
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.getElementById('main-content');
+            const overlay = document.getElementById('sidebar-overlay');
+            if (!sidebar || !mainContent) return;
+
+            if (window.innerWidth >= 1024) {
+                if (overlay) overlay.classList.remove('active');
+                if (isSidebarCollapsed) {
+                    sidebar.classList.add('lg:-translate-x-full');
+                    sidebar.classList.remove('lg:translate-x-0');
+                    mainContent.classList.remove('lg:ml-64');
+                    mainContent.classList.add('lg:ml-0');
+                } else {
+                    sidebar.classList.remove('lg:-translate-x-full');
+                    sidebar.classList.add('lg:translate-x-0');
+                    mainContent.classList.add('lg:ml-64');
+                    mainContent.classList.remove('lg:ml-0');
+                }
+            } else {
+                mainContent.classList.remove('lg:ml-0');
+                mainContent.classList.add('lg:ml-64');
+                if (isSidebarCollapsed) {
+                    sidebar.classList.remove('translate-x-0');
+                    sidebar.classList.add('-translate-x-full');
+                    if (overlay) overlay.classList.remove('active');
+                } else {
+                    sidebar.classList.add('translate-x-0');
+                    sidebar.classList.remove('-translate-x-full');
+                    if (overlay) overlay.classList.add('active');
+                }
+            }
+        }
+
+        function toggleSidebar() {
+            isSidebarCollapsed = !isSidebarCollapsed;
+            localStorage.setItem('sidebar_collapsed', isSidebarCollapsed);
+            applySidebarState();
+        }
+        applySidebarState();
+        window.addEventListener('resize', applySidebarState);
+
+        // Load Sidebar Menus
+        async function loadSidebarMenus() {
+            try {
+                const res = await fetch('/api/menus');
+                const menus = await res.json();
+                renderSidebarNav(menus);
+            } catch (err) {
+                console.error('Failed to load sidebar menus:', err);
+            }
+        }
+
+        function renderSidebarNav(menus) {
+            const container = document.getElementById('sidebar-nav-container');
+            if (!container) return;
+            const sections = {};
+            (menus || []).forEach(m => {
+                const sec = m.section || 'General';
+                if (!sections[sec]) sections[sec] = [];
+                sections[sec].push(m);
+            });
+            let html = '';
+            const currentPath = window.location.pathname;
+
+            for (const [secTitle, items] of Object.entries(sections)) {
+                html += `<p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-3 mt-4 mb-2 first:mt-1">${esc(secTitle)}</p>`;
+                items.forEach((m, idx) => {
+                    const hasSubmenus = m.submenus && m.submenus.length > 0;
+                    const menuId = `menu-tree-${m.id || idx}`;
+                    const isAnyChildActive = hasSubmenus && m.submenus.some(s => currentPath === s.url || currentPath.startsWith(s.url + '/'));
+                    const isDirectActive = !hasSubmenus && currentPath === m.url;
+
+                    if (hasSubmenus) {
+                        html += `
+                            <div class="menu-treeview-group">
+                                <button type="button" onclick="toggleSubmenu('${menuId}')" class="sidebar-nav-item w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium ${isAnyChildActive ? 'text-white bg-white/10' : 'text-slate-300 hover:text-white'} transition group">
+                                    <div class="flex items-center gap-3 overflow-hidden">
+                                        <div class="w-8 h-8 rounded-lg ${isAnyChildActive ? 'bg-blue-600 shadow-sm text-white' : 'bg-slate-800 text-slate-400 group-hover:text-white'} flex items-center justify-center shrink-0">
+                                            <i data-lucide="${esc(m.icon || 'folder')}" class="w-4 h-4"></i>
+                                        </div>
+                                        <div class="overflow-hidden text-left">
+                                            <span class="block truncate ${isAnyChildActive ? 'font-bold text-white' : 'font-medium'} text-xs">${esc(m.title)}</span>
+                                        </div>
+                                    </div>
+                                    <i id="${menuId}-arrow" data-lucide="chevron-right" class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0 ${isAnyChildActive ? 'rotate-90 text-blue-400' : ''}"></i>
+                                </button>
+                                <div id="${menuId}-submenu" class="space-y-1 pl-4 pr-1 mt-1 border-l-2 border-slate-800 ml-4 ${isAnyChildActive ? '' : 'hidden'}">
+                                    ${m.submenus.map(sub => {
+                                        const isSubActive = currentPath === sub.url;
+                                        const isSubDisabled = sub.is_disabled === 1;
+                                        if (isSubDisabled) {
+                                            return `<div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-500 cursor-not-allowed opacity-60"><i data-lucide="${esc(sub.icon || 'circle')}" class="w-2.5 h-2.5 text-slate-600 shrink-0"></i><span class="truncate">${esc(sub.title)}</span></div>`;
+                                        }
+                                        const subActiveStyle = isSubActive ? 'bg-blue-600 text-white font-bold shadow-sm' : 'text-slate-400 hover:text-white hover:bg-white/5';
+                                        return `<a href="${esc(sub.url)}" class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition ${subActiveStyle}">
+                                            <i data-lucide="${esc(sub.icon || 'circle')}" class="w-2.5 h-2.5 ${isSubActive ? 'text-white fill-white' : 'text-slate-400'} shrink-0"></i>
+                                            <span class="truncate">${esc(sub.title)}</span>
+                                        </a>`;
+                                    }).join('')}
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        const directActiveStyle = isDirectActive ? 'active text-white font-bold' : 'text-slate-300 hover:text-white';
+                        html += `
+                            <a href="${esc(m.url)}" class="sidebar-nav-item flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium ${directActiveStyle} transition group">
+                                <div class="flex items-center gap-3 overflow-hidden">
+                                    <div class="w-8 h-8 rounded-lg ${isDirectActive ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 group-hover:text-white'} flex items-center justify-center shrink-0">
+                                        <i data-lucide="${esc(m.icon || 'circle')}" class="w-4 h-4"></i>
+                                    </div>
+                                    <span class="truncate text-xs">${esc(m.title)}</span>
+                                </div>
+                            </a>
+                        `;
+                    }
+                });
+            }
+            container.innerHTML = html;
+            if (window.lucide) lucide.createIcons();
+        }
+
+        function toggleSubmenu(id) {
+            const sub = document.getElementById(`${id}-submenu`);
+            const arrow = document.getElementById(`${id}-arrow`);
+            if (!sub) return;
+            sub.classList.toggle('hidden');
+            if (arrow) arrow.classList.toggle('rotate-90');
+        }
+
+        // === Tab Switching ===
+        function switchTab(tab) {
+            currentTab = tab;
+            currentPage = 1;
+            historyPage = 1;
+
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            const btn = document.getElementById(`tab-${tab}`);
+            if (btn) btn.classList.add('active');
+
+            const hideSuggestionFilters = tab === 'history';
+            ['filter-days-wrap', 'filter-from-wrap', 'filter-to-wrap',
+             'filter-min-amount-wrap', 'filter-min-orders-wrap',
+             'filter-sort-wrap', 'filter-sort-order-wrap'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.style.display = hideSuggestionFilters ? 'none' : '';
+            });
+            const searchInput = document.getElementById('filter-search');
+            if (searchInput) {
+                searchInput.placeholder = hideSuggestionFilters
+                    ? 'Search by customer, gift name or note...'
+                    : 'Search by customer name, ID or phone...';
+            }
+            if (hideSuggestionFilters) {
+                const dateLabel = document.getElementById('date-range-label');
+                if (dateLabel) dateLabel.textContent = '';
+            }
+
+            if (tab === 'history') {
+                document.getElementById('suggestions-section').classList.add('hidden');
+                document.getElementById('history-section').classList.remove('hidden');
+                fetchGiftHistory();
+            } else {
+                document.getElementById('suggestions-section').classList.remove('hidden');
+                document.getElementById('history-section').classList.add('hidden');
+                fetchSuggestions();
+            }
+        }
+
+        function fetchCurrentTab() {
+            if (currentTab === 'history') {
+                fetchGiftHistory();
+            } else {
+                fetchSuggestions();
+            }
+        }
+
+        function applyFilters() {
+            const filterError = document.getElementById('filter-error');
+            const from = document.getElementById('filter-date-from').value || '';
+            const to = document.getElementById('filter-date-to').value || '';
+
+            if (from && to && from > to) {
+                filterError.textContent = 'The first purchase From date must be on or before the To date.';
+                return;
+            }
+            filterError.textContent = '';
+
+            searchQuery = (document.getElementById('filter-search').value || '').trim();
+            newCustomerDays = parseInt(document.getElementById('filter-days').value) || 90;
+            firstPurchaseFrom = from;
+            firstPurchaseTo = to;
+            minAmount = parseFloat(document.getElementById('filter-min-amount').value) || null;
+            minOrders = parseInt(document.getElementById('filter-min-orders').value) || null;
+            sortBy = document.getElementById('filter-sort').value || 'total_purchase_amount';
+            sortOrder = document.getElementById('filter-sort-order').value || 'desc';
+            currentPage = 1;
+            historyPage = 1;
+            fetchCurrentTab();
+        }
+
+        // Enter key on search
+        document.getElementById('filter-search').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') applyFilters();
+        });
+
+        // === Fetch Suggestions ===
+        async function fetchSuggestions() {
+            const icon = document.getElementById('refresh-icon');
+            const loading = document.getElementById('loading-state');
+            const errorState = document.getElementById('error-state');
+            const suggestionsSection = document.getElementById('suggestions-section');
+            const emptyState = document.getElementById('empty-state');
+
+            if (icon) icon.classList.add('animate-spin');
+            loading.classList.remove('hidden');
+            errorState.classList.add('hidden');
+            suggestionsSection.classList.add('hidden');
+
+            try {
+                const params = new URLSearchParams({
+                    group: 'all',
+                    new_customer_days: newCustomerDays,
+                    sort_by: sortBy,
+                    sort_order: sortOrder,
+                    page: currentPage,
+                    page_size: pageSize,
+                });
+                if (searchQuery) params.append('search', searchQuery);
+                if (firstPurchaseFrom) params.append('first_purchase_from', firstPurchaseFrom);
+                if (firstPurchaseTo) params.append('first_purchase_to', firstPurchaseTo);
+                if (minAmount) params.append('min_total_amount', minAmount);
+                if (minOrders) params.append('min_order_count', minOrders);
+
+                const res = await fetch(`/api/customer-gifts/customers?${params.toString()}`);
+                if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    throw new Error(body.message || `Unable to load suggestions (HTTP ${res.status}).`);
+                }
+                const data = await res.json();
+
+                // Update summary
+                document.getElementById('summary-new').textContent = data.summary?.new_customers_total ?? '-';
+                document.getElementById('summary-repeat').textContent = data.summary?.repeat_customers_total ?? '-';
+                document.getElementById('summary-days-label').textContent = data.filters?.new_customer_days ?? 90;
+                document.getElementById('tab-new-count').textContent = data.summary?.new_customers_total ?? '-';
+                document.getElementById('tab-repeat-count').textContent = data.summary?.repeat_customers_total ?? '-';
+
+                const newRange = data.date_range?.new_customers;
+                const repeatRange = data.date_range?.repeat_customers;
+                document.getElementById('summary-new-range').textContent = newRange?.first_purchase_from
+                    ? `First recorded purchase range: ${newRange.first_purchase_from} to ${newRange.first_purchase_to}`
+                    : '';
+                document.getElementById('summary-repeat-range').textContent = repeatRange?.first_purchase_from
+                    ? `First recorded purchase range: ${repeatRange.first_purchase_from} to ${repeatRange.first_purchase_to}`
+                    : '';
+                document.getElementById('calculation-basis').textContent = data.calculation_basis
+                    ? `Calculation basis: ${data.calculation_basis}`
+                    : '';
+
+                // Date range label
+                const dateLabel = document.getElementById('date-range-label');
+                if (currentTab === 'new' && data.date_range?.new_customers) {
+                    const r = data.date_range.new_customers;
+                    dateLabel.textContent = r.first_purchase_from ? `Showing customers with first recorded purchase between ${r.first_purchase_from} and ${r.first_purchase_to}` : '';
+                } else if (currentTab === 'repeat' && data.date_range?.repeat_customers) {
+                    const r = data.date_range.repeat_customers;
+                    dateLabel.textContent = r.first_purchase_from ? `Showing repeat customers with first recorded purchase between ${r.first_purchase_from} and ${r.first_purchase_to}` : '';
+                } else {
+                    dateLabel.textContent = '';
+                }
+
+                // Render table
+                const group = currentTab === 'new' ? data.new_customers : data.repeat_customers;
+                const rows = group?.rows || [];
+                const pagination = group?.pagination || {};
+                renderSuggestionsTable(rows);
+                renderSuggestionsPagination(pagination);
+
+                loading.classList.add('hidden');
+                suggestionsSection.classList.remove('hidden');
+                emptyState.classList.toggle('hidden', rows.length > 0);
+                errorState.classList.add('hidden');
+            } catch (err) {
+                console.error('Failed to load suggestions:', err);
+                loading.classList.add('hidden');
+                errorState.classList.remove('hidden');
+                document.getElementById('error-message-text').textContent = err.message || 'Server error';
+            } finally {
+                if (icon) icon.classList.remove('animate-spin');
+                if (window.lucide) lucide.createIcons();
+            }
+        }
+
+        function renderSuggestionsTable(rows) {
+            const tbody = document.getElementById('suggestions-tbody');
+            if (!rows || rows.length === 0) {
+                tbody.innerHTML = '';
+                return;
+            }
+
+            tbody.innerHTML = rows.map(r => `
+                <tr class="hover:bg-slate-50/50 transition">
+                    <td class="px-4 py-3">
+                        <div class="font-semibold text-xs text-slate-800">${esc(r.customer_name || r.customer_id)}</div>
+                        <div class="text-[10px] text-slate-500 mt-0.5">
+                            ${esc(r.customer_id)}
+                            ${r.phone ? ` &middot; <span class="text-blue-600">${esc(r.phone)}</span>` : ''}
+                        </div>
+                    </td>
+                    <td class="px-4 py-3 text-xs text-slate-600">${r.first_purchase_date ? esc(r.first_purchase_date) : '<span class="text-slate-400">Unknown</span>'}</td>
+                    <td class="px-4 py-3 text-xs text-slate-600">${r.last_purchase_date ? esc(r.last_purchase_date) : '<span class="text-slate-400">Unknown</span>'}</td>
+                    <td class="px-4 py-3 text-xs text-slate-800 font-semibold text-right">${formatAmount(r.total_purchase_amount)}</td>
+                    <td class="px-4 py-3 text-xs text-slate-600 text-center">${Number(r.order_count) || 0}</td>
+                    <td class="px-4 py-3 text-xs text-slate-600 text-center">${Number(r.distinct_purchase_days) || 0}</td>
+                    <td class="px-4 py-3 text-center">
+                        <button type="button" data-customer-id="${esc(r.customer_id)}" onclick="openDetailModal(this.dataset.customerId)" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 transition">
+                            <i data-lucide="eye" class="w-3 h-3"></i> Details
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function renderSuggestionsPagination(p) {
+            const info = document.getElementById('suggestions-page-info');
+            const prev = document.getElementById('suggestions-prev');
+            const next = document.getElementById('suggestions-next');
+
+            info.textContent = p.total_records != null ? `Page ${p.page} of ${p.total_pages} (${p.total_records} records)` : '';
+            prev.disabled = !p.has_prev;
+            next.disabled = !p.has_next;
+        }
+
+        function changePage(delta) {
+            currentPage += delta;
+            if (currentPage < 1) currentPage = 1;
+            fetchSuggestions();
+        }
+
+        // === Gift History ===
+        async function fetchGiftHistory() {
+            const icon = document.getElementById('refresh-icon');
+            const loading = document.getElementById('loading-state');
+            const errorState = document.getElementById('error-state');
+            const historySection = document.getElementById('history-section');
+            const historyEmpty = document.getElementById('history-empty');
+
+            if (icon) icon.classList.add('animate-spin');
+            loading.classList.remove('hidden');
+            errorState.classList.add('hidden');
+            historySection.classList.add('hidden');
+
+            try {
+                const params = new URLSearchParams({
+                    page: historyPage,
+                    page_size: pageSize,
+                });
+                if (searchQuery) params.append('search', searchQuery);
+
+                const res = await fetch(`/api/customer-gifts/gifts?${params.toString()}`);
+                if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    throw new Error(body.message || `Unable to load gift history (HTTP ${res.status}).`);
+                }
+                const data = await res.json();
+
+                document.getElementById('summary-gifts').textContent = data.pagination?.total_records ?? data.gifts?.length ?? '-';
+                document.getElementById('tab-history-count').textContent = data.pagination?.total_records ?? data.gifts?.length ?? '-';
+
+                renderHistoryTable(data.gifts || []);
+                renderHistoryPagination(data.pagination || {});
+
+                loading.classList.add('hidden');
+                historySection.classList.remove('hidden');
+                historyEmpty.classList.toggle('hidden', (data.gifts || []).length > 0);
+                errorState.classList.add('hidden');
+            } catch (err) {
+                console.error('Failed to load gift history:', err);
+                loading.classList.add('hidden');
+                errorState.classList.remove('hidden');
+                document.getElementById('error-message-text').textContent = err.message || 'Server error';
+            } finally {
+                if (icon) icon.classList.remove('animate-spin');
+                if (window.lucide) lucide.createIcons();
+            }
+        }
+
+        function renderHistoryTable(gifts) {
+            const tbody = document.getElementById('history-tbody');
+            if (!gifts || gifts.length === 0) {
+                tbody.innerHTML = '';
+                return;
+            }
+            tbody.innerHTML = gifts.map(g => `
+                <tr class="hover:bg-slate-50/50 transition">
+                    <td class="px-4 py-3">
+                        <div class="font-semibold text-xs text-slate-800">${esc(g.customer_name || g.customer_id)}</div>
+                        <div class="text-[10px] text-slate-500">${esc(g.customer_id)}</div>
+                    </td>
+                    <td class="px-4 py-3 text-xs text-slate-700 font-medium">${esc(g.gift_name)}</td>
+                    <td class="px-4 py-3 text-xs text-slate-600">${g.gift_date ? esc(g.gift_date) : '<span class="text-slate-400">Unknown</span>'}</td>
+                    <td class="px-4 py-3 text-xs text-slate-500 max-w-[200px] truncate">${esc(g.note) || '-'}</td>
+                    <td class="px-4 py-3 text-xs text-slate-600">${esc(g.recorded_by_username || g.recorded_by || '-')}</td>
+                    <td class="px-4 py-3 text-[10px] text-slate-400">${g.created_at ? esc(g.created_at) : '-'}</td>
+                </tr>
+            `).join('');
+        }
+
+        function renderHistoryPagination(p) {
+            const info = document.getElementById('history-page-info');
+            const prev = document.getElementById('history-prev');
+            const next = document.getElementById('history-next');
+
+            info.textContent = p.total_records != null ? `Page ${p.page} of ${p.total_pages} (${p.total_records} records)` : '';
+            prev.disabled = !p.has_prev;
+            next.disabled = !p.has_next;
+        }
+
+        function changeHistoryPage(delta) {
+            historyPage += delta;
+            if (historyPage < 1) historyPage = 1;
+            fetchGiftHistory();
+        }
+
+        // === Customer Detail Modal ===
+        async function openDetailModal(customerId) {
+            activeCustomerId = customerId;
+            const modal = document.getElementById('detail-modal');
+            const content = document.getElementById('modal-content');
+            modal.classList.remove('hidden');
+            content.innerHTML = `<div class="text-center py-8"><div class="w-6 h-6 border-2 border-slate-200 border-t-blue-500 rounded-full animate-spin mx-auto"></div><p class="text-xs text-slate-500 mt-2">Loading...</p></div>`;
+
+            try {
+                const res = await fetch(`/api/customer-gifts/customers/${encodeURIComponent(customerId)}`);
+                if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    throw new Error(body.message || `Unable to load customer details (HTTP ${res.status}).`);
+                }
+                const data = await res.json();
+                renderDetailModal(data);
+            } catch (err) {
+                content.innerHTML = `<div class="bg-rose-50 border border-rose-200 rounded-lg p-4 text-center">
+                    <p class="text-xs text-rose-600 font-medium">${esc(err.message)}</p>
+                </div>`;
+            }
+            if (window.lucide) lucide.createIcons();
+        }
+
+        function renderDetailModal(data) {
+            const content = document.getElementById('modal-content');
+            const c = data.customer || {};
+            const ps = c.purchase_summary || {};
+            const gifts = data.gifts || [];
+            const facts = c.purchase_facts || [];
+
+            let html = `
+                <div class="space-y-1">
+                    <h4 class="text-base font-bold text-slate-800">${esc(c.customer_name) || '(Unnamed customer)'}</h4>
+                    <p class="text-xs text-slate-500">${esc(c.customer_id)} ${c.phone ? '&middot; ' + esc(c.phone) : '&middot; <span class="text-slate-400">No phone recorded</span>'}</p>
+                    ${c.address ? `<p class="text-xs text-slate-400">${esc(c.address)}</p>` : ''}
+                </div>
+
+                <div class="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                    <h5 class="text-[10px] font-bold text-slate-500 uppercase mb-2">Purchase Summary</h5>
+                    <div class="grid grid-cols-2 gap-3 text-xs">
+                        <div><span class="text-slate-500">First Recorded Purchase:</span> <span class="font-medium text-slate-800">${ps.first_purchase_date || 'Unknown'}</span></div>
+                        <div><span class="text-slate-500">Last Recorded Purchase:</span> <span class="font-medium text-slate-800">${ps.last_purchase_date || 'Unknown'}</span></div>
+                        <div><span class="text-slate-500">Total Amount:</span> <span class="font-bold text-slate-800">${formatAmount(ps.total_purchase_amount)}</span></div>
+                        <div><span class="text-slate-500">Orders:</span> <span class="font-medium text-slate-800">${ps.order_count ?? '-'}</span></div>
+                        <div><span class="text-slate-500">Purchase Days:</span> <span class="font-medium text-slate-800">${ps.distinct_purchase_days ?? '-'}</span></div>
+                    </div>
+                    <p class="text-[10px] text-slate-400 mt-2 italic">Figures based on first recorded purchase in the database.</p>
+                </div>
+
+                ${facts.length > 0 ? `
+                <div>
+                    <h5 class="text-[10px] font-bold text-slate-500 uppercase mb-1">Supporting Facts</h5>
+                    <ul class="text-xs text-slate-600 space-y-0.5 list-disc list-inside">
+                        ${facts.map(f => `<li>${esc(f)}</li>`).join('')}
+                    </ul>
+                </div>` : ''}
+
+                <div>
+                    <h5 class="text-[10px] font-bold text-slate-500 uppercase mb-2">Gift History (${gifts.length})</h5>
+                    ${gifts.length > 0 ? `
+                    <div class="space-y-2">
+                        ${gifts.map(g => `
+                            <div class="bg-pink-50 border border-pink-200 rounded-lg p-3">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs font-bold text-pink-800">${esc(g.gift_name)}</span>
+                                    <span class="text-[10px] text-pink-600">${g.gift_date || 'Unknown date'}</span>
+                                </div>
+                                ${g.note ? `<p class="text-[10px] text-slate-500 mt-1">${esc(g.note)}</p>` : ''}
+                                <p class="text-[10px] text-slate-400 mt-0.5">By ${esc(g.recorded_by_username || g.recorded_by)} on ${g.created_at || '-'}</p>
+                            </div>
+                        `).join('')}
+                    </div>` : `<p class="text-xs text-slate-400">No gifts recorded for this customer yet.</p>`}
+                </div>
+
+                ${isAdminUser ? `
+                <!-- Admin Gift Form -->
+                <div class="bg-gradient-to-r from-pink-50 to-rose-50 rounded-lg border border-pink-200 p-4">
+                    <h5 class="text-xs font-bold text-pink-800 mb-3 flex items-center gap-1.5">
+                        <i data-lucide="gift" class="w-3.5 h-3.5"></i> Record a Gift (Admin Only)
+                    </h5>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-[10px] font-semibold text-slate-600 mb-1">Gift Name *</label>
+                            <input id="gift-name" type="text" placeholder="e.g., Holiday Gift Basket" maxlength="200"
+                                   class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-pink-500 outline-none transition" />
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-semibold text-slate-600 mb-1">Gift Date</label>
+                            <input id="gift-date" type="date" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-pink-500 outline-none transition" />
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-semibold text-slate-600 mb-1">Note (optional)</label>
+                            <textarea id="gift-note" rows="2" maxlength="500" placeholder="Optional note..."
+                                      class="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-pink-500 outline-none transition resize-none"></textarea>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button type="button" onclick="recordGift()" id="record-gift-btn"
+                                    class="px-4 py-2 text-xs font-bold text-white bg-pink-600 hover:bg-pink-700 rounded-lg transition shadow-sm">
+                                Record Gift
+                            </button>
+                            <span id="gift-feedback" class="text-xs"></span>
+                        </div>
+                    </div>
+                </div>` : `
+                <div class="bg-slate-50 rounded-lg border border-slate-200 p-4">
+                    <p class="text-xs text-slate-500">Only Admin users can record gifts. You can review the customer's purchase summary and gift history here.</p>
+                </div>`}
+            `;
+            content.innerHTML = html;
+            if (window.lucide) lucide.createIcons();
+        }
+
+        function closeDetailModal() {
+            document.getElementById('detail-modal').classList.add('hidden');
+            activeCustomerId = null;
+        }
+
+        // === Record Gift ===
+        async function recordGift() {
+            const btn = document.getElementById('record-gift-btn');
+            const feedback = document.getElementById('gift-feedback');
+            const giftName = (document.getElementById('gift-name').value || '').trim();
+            const giftDate = document.getElementById('gift-date').value || '';
+            const giftNote = (document.getElementById('gift-note').value || '').trim();
+
+            if (!giftName) {
+                feedback.textContent = 'Gift name is required.';
+                feedback.className = 'text-xs text-rose-600';
+                return;
+            }
+            if (!activeCustomerId) {
+                feedback.textContent = 'No customer selected.';
+                feedback.className = 'text-xs text-rose-600';
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Saving...';
+            feedback.textContent = '';
+
+            try {
+                const payload = {
+                    customer_id: activeCustomerId,
+                    gift_name: giftName,
+                };
+                if (giftDate) payload.gift_date = giftDate;
+                if (giftNote) payload.note = giftNote;
+
+                const res = await fetch('/api/customer-gifts/gifts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const data = await res.json().catch(() => ({}));
+
+                if (res.ok && data.success) {
+                    feedback.textContent = 'Gift recorded successfully!';
+                    feedback.className = 'text-xs text-emerald-600 font-semibold';
+                    document.getElementById('gift-name').value = '';
+                    document.getElementById('gift-date').value = '';
+                    document.getElementById('gift-note').value = '';
+                    // Refresh modal
+                    setTimeout(() => openDetailModal(activeCustomerId), 800);
+                    // Refresh gift count
+                    fetchGiftHistoryCount();
+                } else {
+                    feedback.textContent = data.message || 'Failed to record gift.';
+                    feedback.className = 'text-xs text-rose-600';
+                }
+            } catch (err) {
+                feedback.textContent = err.message || 'Network error.';
+                feedback.className = 'text-xs text-rose-600';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Record Gift';
+            }
+        }
+
+        async function fetchGiftHistoryCount() {
+            try {
+                const res = await fetch('/api/customer-gifts/gifts?page=1&page_size=1');
+                if (res.ok) {
+                    const data = await res.json();
+                    document.getElementById('summary-gifts').textContent = data.pagination?.total_records ?? '-';
+                    document.getElementById('tab-history-count').textContent = data.pagination?.total_records ?? '-';
+                }
+            } catch (e) { /* silent */ }
+        }
+
+        // === Init ===
+        loadSidebarMenus();
+        switchTab('new');
+        fetchGiftHistoryCount();
+    </script>
+</body>
+</html>
